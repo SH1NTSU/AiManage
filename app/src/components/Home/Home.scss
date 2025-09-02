@@ -1,0 +1,25 @@
+main {
+  display: flex;
+  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  width: 30%;
+  height: 50%;
+  background-color: var(--text-color);
+  border-radius: 10px;
+  gap: 2rem;
+  box-shadow: 5px 2px 5px var(--bg-color);
+  color: var(--bg-color);
+}
+
+
+#plus {
+  border-radius:50%;
+  width: 3rem;
+  height: 3rem;
+  font-size: 1.4rem;
+  text-align: center;
+  padding: 2px;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}

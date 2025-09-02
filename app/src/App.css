@@ -1,0 +1,23 @@
+#root {
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+  height: 1334px;
+
+  width: 100%;
+}
+
+
+Nav {
+	height: 5%;
+	width: 100%;
+}
+
+.main-content {
+	height: 95%;
+
+	width: 100%;
+	display: flex;
+	justify-content: center;
+}
+
