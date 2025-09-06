@@ -9,9 +9,17 @@ import (
 
 func NewRouter() http.Handler { 
 	r := chi.NewRouter()
-
 	r.Get("/health", handlers.HealthCheckHandler)
+	
+	r.Post("/api/v1/insert", handlers.InsertHandler)
 
 	return r
 
-} 
+
+}
+
+
+
+
+
+
