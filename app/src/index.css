@@ -1,3 +1,4 @@
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -66,3 +67,8 @@ body {
 .fancy-btn span:not(:hover) {
   transition: all 1s;
 }
+
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

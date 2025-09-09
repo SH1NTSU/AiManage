@@ -5,6 +5,7 @@ import Nav from './components/Nav/Nav.tsx'
 import Home from './components/Home/Home.tsx'
 import Settings from './components/Settings/Settings.tsx'
 import Stats from './components/Statistics/Statistics.tsx'
+import { ModelProvider } from './context/modelContext.tsx'
 
 function Layout() {
   return (
@@ -19,6 +20,7 @@ function Layout() {
 
 function App() {
   return (
+    <ModelProvider>
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Layout />}>
@@ -28,6 +30,7 @@ function App() {
         </Route>
       </Routes>
     </BrowserRouter>
+   </ModelProvider>
   )
 }
 
