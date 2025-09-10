@@ -29,6 +29,9 @@ func NewRouter() http.Handler {
 	
 	r.Post("/api/v1/insert", handlers.InsertHandler)
 
+	r.Get("/api/v1/getModels", handlers.ReadHandler)
+	
+	r.HandleFunc("/ws", WsHandler)
 	return r
 
 

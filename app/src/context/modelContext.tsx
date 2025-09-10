@@ -1,5 +1,10 @@
 import axios from "axios";
-import { createContext, type ReactNode, useState } from "react";
+import { createContext, type ReactNode, useEffect, useState } from "react";
+interface Model {
+	name: string;
+	picture: string; 
+	folder: string[];
+}
 
 interface ModelContextType {
   name: string;
@@ -9,9 +14,11 @@ interface ModelContextType {
   setPicture: (file: File | null) => void;
   setFolder: (files: File[] | null) => void;
   send: () => Promise<void>;
+  models: Model[];
 }
 
-// ⬅️ Exported so it can be imported elsewhere
+
+
 export const ModelContext = createContext<ModelContextType | null>(null);
 
 export const ModelProvider = ({ children }: { children: ReactNode }) => {
@@ -19,6 +26,7 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
   const [picture, setPicture] = useState<File | null>(null);
   const [folder, setFolder] = useState<File[] | null>(null);
 
+  const [models, setModels] = useState<Model[]>([]);
 const send = async () => {
   try {
     const formData = new FormData();
@@ -44,9 +52,24 @@ const send = async () => {
   }
 };
 
+useEffect(() => {
+  const socket = new WebSocket("ws://localhost:8080/ws");
+   
+
+  socket.onmessage = (event) => {
+    const updatedModels: Model[] = JSON.parse(event.data);
+    setModels(updatedModels);
+  };
+
+  return () => socket.close();
+}, []);
+
+
+
+
   return (
     <ModelContext.Provider
-      value={{ name, picture, folder, setName, setPicture, setFolder, send }}
+      value={{ name, picture, folder, setName, setPicture, setFolder, send ,models}}
     >
       {children}
     </ModelContext.Provider>
