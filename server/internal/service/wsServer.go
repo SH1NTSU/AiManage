@@ -1,3 +1,4 @@
+// service/websocket.go
 package service
 
 import (
@@ -5,68 +6,105 @@ import (
 	"log"
 	"net/http"
 	"server/internal/models"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var upgrader = websocket.Upgrader{
+var Upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
 	},
 }
 
-
-
 func WsHandler(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("Error upgrading: ", err)
 		return
 	}
 	defer conn.Close()
 
-	collection := models.GetCollection()
-	ctx := context.TODO()
+	// Send initial data immediately
+	sendCurrentModels(conn)
 
-	// --- Send initial data immediately ---
-	allModels, err := models.GetModels(bson.M{})
-	if err != nil {
-		log.Println("GetModels error: ", err)
-	} else {
-		if err := conn.WriteJSON(allModels); err != nil {
-			log.Println("websocket send error: ", err)
-			return
-		}
+	// Try to use change streams first
+	if useChangeStreams(conn) {
+		log.Println("WebSocket client connected using change streams")
+		return
 	}
 
-	// --- Start watching the change stream ---
-	stream, err := collection.Watch(ctx, bson.A{})
+	// Fallback to polling if change streams fail
+	log.Println("WebSocket client connected, falling back to polling...")
+	usePolling(conn)
+}
+
+func useChangeStreams(conn *websocket.Conn) bool {
+	collection := models.GetCollection()
+	ctx := context.Background()
+
+	// Create change stream with full document lookup
+	pipeline := mongo.Pipeline{}
+	opts := options.ChangeStream().SetFullDocument(options.UpdateLookup)
+
+	stream, err := collection.Watch(ctx, pipeline, opts)
 	if err != nil {
-		log.Println("Change stream error: ", err)
-		return
+		log.Println("Change stream error, falling back to polling:", err)
+		return false
 	}
 	defer stream.Close(ctx)
 
-	log.Println("WebSocket client connected, waiting for DB changes...")
+	log.Println("Change stream started successfully!")
 
+	// Process change events in real-time
 	for stream.Next(ctx) {
-		allModels, err := models.GetModels(bson.M{})
-		if err != nil {
-			log.Println("GetModels error: ", err)
+		var changeEvent struct {
+			OperationType string      `bson:"operationType"`
+			FullDocument  interface{} `bson:"fullDocument"`
+		}
+		
+		if err := stream.Decode(&changeEvent); err != nil {
+			log.Println("Error decoding change event:", err)
 			continue
 		}
-		if err := conn.WriteJSON(allModels); err != nil {
-			log.Println("websocket send error: ", err)
-			break
-		}
+
+		log.Printf("Database change detected: %s", changeEvent.OperationType)
+		
+		// Send updated models to client
+		sendCurrentModels(conn)
 	}
 
 	if err := stream.Err(); err != nil {
-		log.Println("Stream error:", err)
+		log.Println("Change stream error:", err)
+		return false
+	}
+
+	return true
+}
+
+func usePolling(conn *websocket.Conn) {
+	ticker := time.NewTicker(5 * time.Second) // Longer interval for fallback
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			sendCurrentModels(conn)
+		}
 	}
 }
 
-	
-
-
+func sendCurrentModels(conn *websocket.Conn) {
+	allModels, err := models.GetModels(bson.M{})
+	if err != nil {
+		log.Println("GetModels error: ", err)
+		return
+	}
+	if err := conn.WriteJSON(allModels); err != nil {
+		log.Println("websocket send error: ", err)
+		return
+	}
+}
