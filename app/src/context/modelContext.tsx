@@ -54,7 +54,7 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
       });
 
       const res = await axios.post(
-        "http://localhost:8080/api/v1/insert",
+        "http://localhost:8080/v1/insert",
         formData,
         { 
           headers: { 
@@ -96,7 +96,7 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
 
     const connectWebSocket = () => {
       try {
-        socket = new WebSocket("ws://localhost:8080/ws");
+        socket = new WebSocket("ws://localhost:8080/v1/ws");
         
         socket.onopen = () => {
           console.log("WebSocket connected");

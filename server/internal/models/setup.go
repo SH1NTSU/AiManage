@@ -64,3 +64,27 @@ func IsConnected() bool {
 	err := MgC.Ping(ctx, nil)
 	return err == nil
 }
+
+func ConnectMongoDBWithRetry() error {
+	maxRetries := 5
+	retryDelay := 2 * time.Second
+
+	for i := 0; i < maxRetries; i++ {
+		log.Printf("Attempting MongoDB connection (attempt %d/%d)...", i+1, maxRetries)
+		
+		err := ConnectDB()
+		if err == nil {
+			return nil // Success!
+		}
+
+		log.Printf("Connection failed: %v", err)
+		
+		if i < maxRetries-1 {
+			log.Printf("Retrying in %v...", retryDelay)
+			time.Sleep(retryDelay)
+			retryDelay *= 2 // Exponential backoff
+		}
+	}
+	
+	return fmt.Errorf("failed to connect after %d attempts", maxRetries)
+}

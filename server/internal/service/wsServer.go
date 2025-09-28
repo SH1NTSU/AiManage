@@ -8,6 +8,7 @@ import (
 	"server/internal/models"
 	"time"
 
+	"server/internal/types"
 	"github.com/gorilla/websocket"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -98,13 +99,16 @@ func usePolling(conn *websocket.Conn) {
 }
 
 func sendCurrentModels(conn *websocket.Conn) {
-	allModels, err := models.GetModels(bson.M{})
+	// Fetch all models using generic GetDocuments
+	allModels, err := models.GetDocuments[types.Model]("Models", bson.M{})
 	if err != nil {
-		log.Println("GetModels error: ", err)
+		log.Println("GetDocuments error:", err)
 		return
 	}
+
+	// Send via websocket
 	if err := conn.WriteJSON(allModels); err != nil {
-		log.Println("websocket send error: ", err)
+		log.Println("WebSocket send error:", err)
 		return
 	}
 }

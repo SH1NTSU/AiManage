@@ -16,6 +16,7 @@ import (
 
 func InsertHandler(w http.ResponseWriter, r *http.Request) {
 
+    const CollectionName = "Models"
     w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
     w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
     w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -77,7 +78,7 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
         Folder:  folderPaths,
     }
 
-    err = models.Insert(m)
+    err = models.Insert( CollectionName, m)
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
