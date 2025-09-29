@@ -6,6 +6,9 @@ import Home from './components/Home/Home.tsx'
 import Settings from './components/Settings/Settings.tsx'
 import Stats from './components/Statistics/Statistics.tsx'
 import { ModelProvider } from './context/modelContext.tsx'
+import Login from './components/Login.tsx'
+import Register from './components/Register.tsx'
+import { AuthProvider } from './context/authContext.tsx'
 
 function Layout() {
   return (
@@ -20,6 +23,7 @@ function Layout() {
 
 function App() {
   return (
+    <AuthProvider>
     <ModelProvider>
     <BrowserRouter>
       <Routes>
@@ -27,10 +31,13 @@ function App() {
           <Route index element={<Home />} /> 
           <Route path="settings" element={<Settings />} />
           <Route path="stats" element={<Stats />} />
+          <Route path="login" element={<Login />} />
+          <Route path="register" element={<Register />} />
         </Route>
       </Routes>
     </BrowserRouter>
    </ModelProvider>
+  </AuthProvider>
   )
 }
 
