@@ -21,7 +21,7 @@ func NewRouter() http.Handler {
 		
 		r.Post("/register", handlers.RegisterHandler)
 		r.Post("/login", handlers.LoginHandler)
-		r.Get("/refresh", handlers.ReadHandler)
+		r.Get("/refresh", handlers.RefreshHandler)
 		r.Group(func(protected chi.Router) {
 		   protected.Use(middlewares.JWTGuard)
 			protected.Get("/health", handlers.HealthCheckHandler)
