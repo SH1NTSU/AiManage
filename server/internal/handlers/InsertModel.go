@@ -2,10 +2,12 @@ package handlers
 
 import (
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"server/internal/models"
 	"server/internal/types"
+	"server/helpers"
 )
 
 
@@ -15,75 +17,86 @@ import (
 
 
 func InsertHandler(w http.ResponseWriter, r *http.Request) {
-
-    const CollectionName = "Models"
-    // w.Header().Set("Access-Control-Allow-Origin", "http://localhost:5173")
-    // w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-    // w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-    //
-    // Handle preflight (OPTIONS request)
-    if r.Method == http.MethodOptions {
-        w.WriteHeader(http.StatusOK)
-        return
-    }
-    err := r.ParseMultipartForm(100 << 20) // 10 MB
-    	if err != nil {
-        	http.Error(w, "Could not parse multipart form: "+err.Error(), http.StatusBadRequest)
-        	return
+	log.Println("📩 InsertHandler called")
+	
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusOK)
+		return
 	}
 
-    name := r.FormValue("name")
+	// Parse form
+	err := r.ParseMultipartForm(200 << 20) // 200 MB for bigger zips
+	if err != nil {
+		log.Println("❌ ParseMultipartForm error:", err)
+		http.Error(w, "Could not parse multipart form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 
-    pictureFile, pictureHeader, err := r.FormFile("picture")
-    var picturePath string
-    if err == nil {
-        defer pictureFile.Close()
+	name := r.FormValue("name")
+	if name == "" {
+		http.Error(w, "Model name is required", http.StatusBadRequest)
+		return
+	}
+	log.Println("📄 Received model name:", name)
 
-        picturePath = "./uploads/" + pictureHeader.Filename
-        out, err := os.Create(picturePath)
-        if err != nil {
-            http.Error(w, "Could not save picture: "+err.Error(), http.StatusInternalServerError)
-            return
-        }
-        defer out.Close()
-        io.Copy(out, pictureFile)
-    }
+	modelDir := "./uploads/" + name
+	if err := os.MkdirAll(modelDir, os.ModePerm); err != nil {
+		log.Println("❌ Failed to create model directory:", err)
+		http.Error(w, "Could not create model directory: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-    // Handle multiple folder files
-    folderFiles := r.MultipartForm.File["folder"]
-    folderPaths := []string{}
-    for _, fileHeader := range folderFiles {
-        file, err := fileHeader.Open()
-        if err != nil {
-            http.Error(w, "Could not open folder file: "+err.Error(), http.StatusInternalServerError)
-            return
-        }
-        defer file.Close()
+	// Handle zip upload
+	zipFile, zipHeader, err := r.FormFile("model_zip")
+	if err != nil {
+		log.Println("❌ No zip file provided:", err)
+		http.Error(w, "You must provide a model zip file", http.StatusBadRequest)
+		return
+	}
+	defer zipFile.Close()
 
-        path := "./uploads/" + fileHeader.Filename
-        out, err := os.Create(path)
-        if err != nil {
-            http.Error(w, "Could not save folder file: "+err.Error(), http.StatusInternalServerError)
-            return
-        }
-        defer out.Close()
-        io.Copy(out, file)
+	zipPath := modelDir + "/" + zipHeader.Filename
+	out, err := os.Create(zipPath)
+	if err != nil {
+		log.Println("❌ Could not create zip file:", err)
+		http.Error(w, "Could not save zip: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer out.Close()
 
-        folderPaths = append(folderPaths, path)
-    }
+	if _, err := io.Copy(out, zipFile); err != nil {
+		log.Println("❌ Could not write zip file:", err)
+		http.Error(w, "Could not save zip: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-    m := types.Model{
-        Name:    name,
-        Picture: picturePath,
-        Folder:  folderPaths,
-    }
+	// Extract zip
+	if err := helpers.Unzip(zipPath, modelDir); err != nil {
+		
+		log.Println("❌ Could not unzip file:", err)
+		http.Error(w, "Could not unzip model: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Println("✅ Model unzipped to:", modelDir)
 
-    err = models.Insert( CollectionName, m)
-    if err != nil {
-        http.Error(w, err.Error(), http.StatusInternalServerError)
-        return
-    }
+	// Optional: remove the zip after extraction
+	os.Remove(zipPath)
 
-    w.WriteHeader(http.StatusCreated)
-    w.Write([]byte("Model added successfully!"))
+	// Insert into DB
+	m := types.Model{
+		Name:   name,
+		Folder: []string{modelDir},
+	}
+
+	log.Printf("📦 Inserting into MongoDB: %+v\n", m)
+	err = models.Insert("Models", m)
+	if err != nil {
+		log.Println("❌ MongoDB insert failed:", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	log.Println("✅ Insert successful!")
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte("Model added successfully!"))
 }
