@@ -19,7 +19,7 @@ func main() {
 	log.Println("✅ MongoDB connection verified!")
 
 	router := service.NewRouter()
-	log.Println("Server running on port :8080")
-	log.Fatal(http.ListenAndServe(":8080", router))
+	log.Println("Server running on port localhost:8081")
+	log.Fatal(http.ListenAndServe(":8081", router))
 }
 

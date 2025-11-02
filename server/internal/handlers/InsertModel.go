@@ -82,7 +82,6 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 	// Optional: remove the zip after extraction
 	os.Remove(zipPath)
 
-	// Insert into DB
 	m := types.Model{
 		Name:   name,
 		Folder: []string{modelDir},
