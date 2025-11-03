@@ -15,7 +15,7 @@ func GetModelsByUserID(ctx context.Context, userID int) ([]map[string]interface{
 	}
 
 	query := `
-		SELECT id, user_id, name, picture, folder, created_at, updated_at
+		SELECT id, user_id, name, picture, folder, training_script, created_at, updated_at
 		FROM models
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -57,7 +57,7 @@ func GetAllModels(ctx context.Context) ([]map[string]interface{}, error) {
 	}
 
 	query := `
-		SELECT id, user_id, name, picture, folder, created_at, updated_at
+		SELECT id, user_id, name, picture, folder, training_script, created_at, updated_at
 		FROM models
 		ORDER BY created_at DESC
 	`
@@ -92,24 +92,29 @@ func GetAllModels(ctx context.Context) ([]map[string]interface{}, error) {
 }
 
 // InsertModel inserts a new model into the database
-func InsertModel(ctx context.Context, userID int, name, picture string, folder []string) (int, error) {
+func InsertModel(ctx context.Context, userID int, name, picture string, folder []string, trainingScript string) (int, error) {
 	if models.Pool == nil {
 		return 0, fmt.Errorf("database connection not initialized")
 	}
 
+	// Use default if training_script is empty
+	if trainingScript == "" {
+		trainingScript = "train.py"
+	}
+
 	query := `
-		INSERT INTO models (user_id, name, picture, folder)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO models (user_id, name, picture, folder, training_script)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id
 	`
 
 	var id int
-	err := models.Pool.QueryRow(ctx, query, userID, name, picture, folder).Scan(&id)
+	err := models.Pool.QueryRow(ctx, query, userID, name, picture, folder, trainingScript).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("insert failed: %w", err)
 	}
 
-	log.Printf("Inserted model with ID: %d", id)
+	log.Printf("Inserted model with ID: %d (training_script: %s)", id, trainingScript)
 	return id, nil
 }
 

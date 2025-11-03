@@ -165,9 +165,18 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get training script path (optional, defaults to "train.py")
+	trainingScript := r.FormValue("training_script")
+	if trainingScript == "" {
+		trainingScript = "train.py"
+		log.Println("ℹ️ No training_script specified, defaulting to 'train.py'")
+	} else {
+		log.Printf("📜 Training script: %s", trainingScript)
+	}
+
 	// Insert model into database
-	log.Printf("📦 Inserting into PostgreSQL for user %d: name=%s, picture=%s\n", userID, name, picturePath)
-	modelID, err := repository.InsertModel(r.Context(), int(userID), name, picturePath, []string{modelDir})
+	log.Printf("📦 Inserting into PostgreSQL for user %d: name=%s, picture=%s, training_script=%s\n", userID, name, picturePath, trainingScript)
+	modelID, err := repository.InsertModel(r.Context(), int(userID), name, picturePath, []string{modelDir}, trainingScript)
 	if err != nil {
 		log.Println("❌ PostgreSQL insert failed:", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
