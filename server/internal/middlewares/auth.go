@@ -1,14 +1,17 @@
 package middlewares
 import (
-	"net/http"
-	"strings"
 	"context"
+	"net/http"
 	"server/helpers"
+	"strconv"
+	"strings"
 )
 
 type contextKey string
 
 const UserEmailKey contextKey = "userEmail"
+
+const UserIDKey contextKey = "userID"
 
 func JWTGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +30,15 @@ func JWTGuard(next http.Handler) http.Handler {
 			return
 		}
 
+		// Convert UserID from string to int
+		userID, err := strconv.Atoi(claims.UserID)
+		if err != nil {
+			http.Error(w, "Invalid user ID in token", http.StatusUnauthorized)
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), UserEmailKey, claims.Email)
+		ctx = context.WithValue(ctx, UserIDKey, userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

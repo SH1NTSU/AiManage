@@ -3,20 +3,22 @@ package main
 import (
 	"log"
 	"net/http"
+
 	"server/internal/models"
 	"server/internal/service"
 )
 
 func main() {
-	if err := models.ConnectMongoDBWithRetry(); err != nil {
-		log.Fatal("Failed to connect to MongoDB after multiple attempts:", err)
+	// Connect to PostgreSQL with retry
+	if err := models.ConnectWithRetry(); err != nil {
+		log.Fatal("Failed to connect to PostgreSQL after multiple attempts:", err)
 	}
 
 	if !models.IsConnected() {
-		log.Fatal("MongoDB connection verification failed")
+		log.Fatal("PostgreSQL connection verification failed")
 	}
 
-	log.Println("✅ MongoDB connection verified!")
+	log.Println("✅ PostgreSQL connection verified!")
 
 	router := service.NewRouter()
 	log.Println("Server running on port localhost:8081")

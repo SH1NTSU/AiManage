@@ -3,52 +3,48 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
-	"server/helpers"
-	"server/internal/models"
-	"server/internal/types"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
+	"server/helpers"
+	"server/internal/repository"
 	"golang.org/x/crypto/bcrypt"
 )
 
 
 
 
-const collectionName = "User"
-
 func RegisterHandler(w http.ResponseWriter, r *http.Request) {
-	const collectionName = "Users"
+	var rq struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
 
-	var rq types.User
 	if err := json.NewDecoder(r.Body).Decode(&rq); err != nil {
 		http.Error(w, "Couldn't decode request", http.StatusBadRequest)
 		return
 	}
 
+	// Check if user already exists
+	existing, err := repository.GetUserByEmail(r.Context(), rq.Email)
+	if err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	if existing != nil {
+		http.Error(w, "Email already registered", http.StatusConflict)
+		return
+	}
+
+	// Hash password
 	hashed, err := bcrypt.GenerateFromPassword([]byte(rq.Password), bcrypt.DefaultCost)
 	if err != nil {
 		http.Error(w, "Couldn't hash password", http.StatusInternalServerError)
 		return
 	}
 
-	u := types.User{
-		Email:    rq.Email,
-		Password: string(hashed),
-	}
-
-	// Optional: Check if user already exists
-	existing, err := models.GetDocuments[types.User](collectionName, bson.M{"email": rq.Email})
+	// Insert user
+	_, err = repository.InsertUser(r.Context(), rq.Email, string(hashed))
 	if err != nil {
-		http.Error(w, "DB error", http.StatusInternalServerError)
-		return
-	}
-	if len(existing) > 0 {
-		http.Error(w, "Email already registered", http.StatusConflict)
-		return
-	}
-
-	if err := models.Insert(collectionName, u); err != nil {
 		http.Error(w, "Couldn't insert user into DB", http.StatusInternalServerError)
 		return
 	}
@@ -60,35 +56,49 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 
 
 func LoginHandler(w http.ResponseWriter, r *http.Request) {
-	const collectionName = "Users"
+	var rq struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
 
-	var rq types.User
 	if err := json.NewDecoder(r.Body).Decode(&rq); err != nil {
 		http.Error(w, "Couldn't decode request", http.StatusBadRequest)
 		return
 	}
 
 	// Fetch user by email
-	users, err := models.GetDocuments[types.User](collectionName, bson.M{"email": rq.Email})
+	user, err := repository.GetUserByEmail(r.Context(), rq.Email)
 	if err != nil {
 		http.Error(w, "DB error", http.StatusInternalServerError)
 		return
 	}
-	if len(users) == 0 {
+	if user == nil {
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	user := users[0]
+	// Get password from user map
+	passwordHash, ok := (*user)["password"].(string)
+	if !ok {
+		http.Error(w, "Invalid user data", http.StatusInternalServerError)
+		return
+	}
 
 	// Compare password
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(rq.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(rq.Password)); err != nil {
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	// Generate JWT token
-	token, err := helpers.GenerateJWT(user.Email)
+	// Get user ID
+	userID, ok := (*user)["id"].(int32)
+	if !ok {
+		http.Error(w, "Invalid user data", http.StatusInternalServerError)
+		return
+	}
+
+	// Generate JWT token with email and userID
+	token, err := helpers.GenerateJWT(rq.Email, int(userID))
 	if err != nil {
 		http.Error(w, "Couldn't generate token", http.StatusInternalServerError)
 		return
@@ -101,15 +111,10 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create session struct
-	session := types.Session{
-		Email:        user.Email,
-		Refresh_token: refreshToken,
-		Expires_at: time.Now().Add(30 * 24 * time.Hour),
-	}
-
 	// Save session to DB
-	if err := models.Insert("Sessions", session); err != nil {
+	expiresAt := time.Now().Add(30 * 24 * time.Hour)
+	_, err = repository.InsertSession(r.Context(), int(userID), rq.Email, refreshToken, expiresAt)
+	if err != nil {
 		http.Error(w, "Couldn't save session", http.StatusInternalServerError)
 		return
 	}
@@ -119,8 +124,9 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		Value:    refreshToken,
 		Path:     "/",
 		HttpOnly: true,
-		MaxAge:   30 * 24 * 60 * 60, 
+		MaxAge:   30 * 24 * 60 * 60,
 	})
+
 	// Send response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

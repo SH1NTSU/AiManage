@@ -1,33 +1,31 @@
-// types/model.go
+// types/main.go
 package types
 
-import (
-	"time"
-
-	"go.mongodb.org/mongo-driver/bson/primitive"
-)
-
-type Model struct {
-    ID      primitive.ObjectID `bson:"_id,omitempty" json:"_id,omitempty"`
-    Name    string             `bson:"name" json:"name"`
-    Picture string             `bson:"picture" json:"picture"`
-    Folder  []string           `bson:"folder" json:"folder"`
-}
-
-
+import "time"
 
 type User struct {
-    ID      primitive.ObjectID `bson:"_id,omitempty" json:"_id,omitempty"`
-    Email string `bson:"email" json:"email"`
-    Password string `bson:"password" json:"password"`
+    ID        int       `json:"id" db:"id"`
+    Email     string    `json:"email" db:"email"`
+    Password  string    `json:"-" db:"password"` // "-" prevents password from being exposed in JSON responses
+    CreatedAt time.Time `json:"created_at" db:"created_at"`
+    UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
-
 type Session struct {
-	
-    ID      primitive.ObjectID `bson:"_id,omitempty" json:"_id,omitempty"`
-    
-    Email string `bson:"email" json:"email"`
-    Refresh_token string `bson:"refresh_token" json:"refresh_token"`
-    Expires_at time.Time `bson:"expires_at" json:"expires_at"`
+    ID           int       `json:"id" db:"id"`
+    UserID       int       `json:"user_id" db:"user_id"`
+    Email        string    `json:"email" db:"email"`
+    RefreshToken string    `json:"refresh_token" db:"refresh_token"`
+    ExpiresAt    time.Time `json:"expires_at" db:"expires_at"`
+    CreatedAt    time.Time `json:"created_at" db:"created_at"`
+}
+
+type Model struct {
+    ID        int       `json:"id" db:"id"`
+    UserID    int       `json:"user_id" db:"user_id"`
+    Name      string    `json:"name" db:"name"`
+    Picture   string    `json:"picture" db:"picture"`
+    Folder    []string  `json:"folder" db:"folder"` // PostgreSQL array support via pgx
+    CreatedAt time.Time `json:"created_at" db:"created_at"`
+    UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }

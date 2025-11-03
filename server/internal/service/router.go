@@ -23,13 +23,12 @@ func NewRouter() http.Handler {
 		r.Post("/login", handlers.LoginHandler)
 		r.Get("/refresh", handlers.RefreshHandler)
 		r.Group(func(protected chi.Router) {
-		   protected.Use(middlewares.JWTGuard)
+			protected.Use(middlewares.JWTGuard)
 			protected.Get("/health", handlers.HealthCheckHandler)
-			
+
 			protected.Post("/insert", handlers.InsertHandler)
-
 			protected.Get("/getModels", handlers.ReadHandler)
-
+			protected.Delete("/deleteModel", handlers.DeleteModel)
 		})
 	})	
 	return r

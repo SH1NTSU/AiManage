@@ -1,10 +1,11 @@
 package helpers
 
 import (
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"crypto/rand"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -15,21 +16,21 @@ import (
 var jwtSecret = []byte(os.Getenv("JWT_SECRET"))
 
 type Claims struct {
-	Email string `json:"email"`
+	Email  string `json:"email"`
+	UserID string `json:"userID"`
 	jwt.RegisteredClaims
 }
 
-func GenerateJWT(email string) (string, error) {
+func GenerateJWT(email string, userID int) (string, error) {
 	claims := Claims{
-		Email: email,
+		Email:  email,
+		UserID: strconv.Itoa(userID),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)), // valid for 24h
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
-	
 	}
 
-	
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(jwtSecret)
 }

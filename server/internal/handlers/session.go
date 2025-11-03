@@ -4,16 +4,10 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+
 	"server/helpers"
-	"server/internal/models"
-	"server/internal/types"
-	"time"
-
-	"go.mongodb.org/mongo-driver/bson"
+	"server/internal/repository"
 )
-
-
-
 
 func RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("refresh_token")
@@ -21,30 +15,39 @@ func RefreshHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Couldn't get the cookie", http.StatusBadRequest)
 		return
 	}
-			
-	sessions, err := models.GetDocuments[types.Session]("Sessions", bson.M{
-	    "refresh_token": cookie.Value,
-	    "expires_at":    bson.M{"$gt": time.Now()},
-	})
+
+	session, err := repository.GetSessionByRefreshToken(r.Context(), cookie.Value)
 	if err != nil {
-	    http.Error(w, "DB error", http.StatusInternalServerError)
-	    return
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
 	}
-	if len(sessions) == 0 {
-	    http.Error(w, "Invalid or expired refresh token", http.StatusUnauthorized)
-	    return
+	if session == nil {
+		http.Error(w, "Invalid or expired refresh token", http.StatusUnauthorized)
+		return
 	}
 
-	session := sessions[0]
+	// Get email and user_id from session
+	email, ok := (*session)["email"].(string)
+	if !ok {
+		http.Error(w, "Invalid session data", http.StatusInternalServerError)
+		return
+	}
 
-	newAccessToken, err := helpers.GenerateJWT(session.Email)
+	userID, ok := (*session)["user_id"].(int32)
+	if !ok {
+		http.Error(w, "Invalid session data", http.StatusInternalServerError)
+		return
+	}
+
+	newAccessToken, err := helpers.GenerateJWT(email, int(userID))
 	if err != nil {
 		http.Error(w, "Couldn't generate token", http.StatusInternalServerError)
 		return
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"token": newAccessToken,
 	})
-	log.Println("Refresh token send succesfully")
+	log.Println("Refresh token sent successfully")
 }
