@@ -1,0 +1,60 @@
+# Python virtual environments
+venv/
+venv_cpu/
+env/
+ENV/
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Compiled binaries
+aiagent-test
+aimanage-server
+aimanage
+test-pokemon
+
+# Database
+*.db
+*.sqlite
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Uploads directory (optional - uncomment if you don't want to track uploads)
+# uploads/
+
+# Environment files
+.env
+.env.local
+
+# Logs
+*.log
+
+# Node modules (if any frontend)
+node_modules/
