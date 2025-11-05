@@ -7,7 +7,7 @@ interface TokenPayload { exp: number; }
 interface AuthContextType {
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, username: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
   error: string | null;
@@ -79,10 +79,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     finally { setLoading(false); }
   };
 
-  const register = async (email: string, password: string) => {
+  const register = async (email: string, password: string, username: string) => {
     setLoading(true); setError(null);
-    try { await axios.post("http://localhost:8081/v1/register", { email, password }); }
-    catch (err: any) { setError(err.response?.data || "Register failed"); }
+    try {
+      await axios.post("http://localhost:8081/v1/register", { email, password, username });
+    }
+    catch (err: any) {
+      const errorMessage = err.response?.data || "Register failed";
+      setError(errorMessage);
+      throw new Error(errorMessage);
+    }
     finally { setLoading(false); }
   };
 

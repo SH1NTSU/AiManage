@@ -1,6 +1,7 @@
-import { useContext, useState } from "react";
-import { Plus, Cpu, HardDrive, Network, Trash2, Play } from "lucide-react";
+import { useContext, useState, useEffect } from "react";
+import { Plus, Cpu, HardDrive, Network, Trash2, Play, Upload, Store, Star, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -20,9 +21,23 @@ import { useToast } from "@/hooks/use-toast";
 
 const Models = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [modelToDelete, setModelToDelete] = useState<{ id: number; name: string } | null>(null);
+  const [modelToPublish, setModelToPublish] = useState<any>(null);
   const [trainingModel, setTrainingModel] = useState<number | null>(null);
+  const [myPublishedModels, setMyPublishedModels] = useState<any[]>([]);
+
+  // Publish form state
+  const [publishForm, setPublishForm] = useState({
+    description: "",
+    price: 0,
+    license_type: "personal_use",
+    category: "",
+    tags: "",
+    model_type: "",
+    framework: "",
+  });
 
   const {
     name, picture, folder, trainingScript,
@@ -33,6 +48,33 @@ const Models = () => {
   const trainingContext = useContext(TrainingContext);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  // Fetch user's published models
+  useEffect(() => {
+    fetchMyPublishedModels();
+  }, []);
+
+  const fetchMyPublishedModels = async () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const response = await fetch("http://localhost:8081/v1/my-published-models", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch published models");
+      }
+
+      const data = await response.json();
+      setMyPublishedModels(data || []);
+    } catch (error) {
+      console.error("Error fetching published models:", error);
+    }
+  };
 
   const handleSubmit = async () => {
     await send();
@@ -98,13 +140,96 @@ const Models = () => {
     }
   };
 
+  const handlePublishClick = (model: any) => {
+    setModelToPublish(model);
+    setPublishDialogOpen(true);
+  };
+
+  const handlePublishSubmit = async () => {
+    if (!modelToPublish) return;
+
+    try {
+      // TODO: Call publish API endpoint
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to publish models",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Prepare payload
+      const payload: any = {
+        model_id: modelToPublish.id,
+        description: publishForm.description,
+        price: publishForm.price,
+        license_type: publishForm.license_type,
+      };
+
+      // Add optional fields if provided
+      if (publishForm.category) payload.category = publishForm.category;
+      if (publishForm.tags) payload.tags = publishForm.tags.split(',').map(t => t.trim()).filter(t => t);
+      if (publishForm.model_type) payload.model_type = publishForm.model_type;
+      if (publishForm.framework) payload.framework = publishForm.framework;
+
+      console.log("Publishing model:", payload);
+
+      const response = await fetch("http://localhost:8081/v1/publish", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Failed to publish model");
+      }
+
+      const result = await response.json();
+      console.log("Publish result:", result);
+
+      toast({
+        title: "Model Published!",
+        description: `${modelToPublish.name} is now available in the community`,
+      });
+
+      // Refresh published models list
+      fetchMyPublishedModels();
+
+      setPublishDialogOpen(false);
+      setModelToPublish(null);
+      // Reset form
+      setPublishForm({
+        description: "",
+        price: 0,
+        license_type: "personal_use",
+        category: "",
+        tags: "",
+        model_type: "",
+        framework: "",
+      });
+    } catch (error) {
+      console.error("Publish error:", error);
+      toast({
+        title: "Publish Failed",
+        description: "Failed to publish model",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="space-y-6 animate-slide-up">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">AI Models</h2>
           <p className="text-muted-foreground mt-1">
-            Manage your AI models and configurations
+            Manage and publish your AI models
           </p>
         </div>
 
@@ -179,8 +304,16 @@ const Models = () => {
         </Dialog>
       </div>
 
-      {/* Show Models from WebSocket */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Tabs for My Models and Published Models */}
+      <Tabs defaultValue="my-models" className="w-full">
+        <TabsList className="grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="my-models">My Models</TabsTrigger>
+          <TabsTrigger value="published">Published Models</TabsTrigger>
+        </TabsList>
+
+        {/* My Models Tab */}
+        <TabsContent value="my-models" className="mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {models.map((model) => (
           <Card
             key={model.id}
@@ -206,6 +339,17 @@ const Models = () => {
                   <Badge className="bg-primary/20 text-primary border-primary/30">
                     Synced
                   </Badge>
+                  {model.trained_model_path && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-secondary hover:text-secondary hover:bg-secondary/10"
+                      onClick={() => handlePublishClick(model)}
+                      title="Publish to Community"
+                    >
+                      <Upload className="w-4 h-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"
@@ -247,7 +391,221 @@ const Models = () => {
             </CardContent>
           </Card>
         ))}
-      </div>
+          </div>
+        </TabsContent>
+
+        {/* Published Models Tab */}
+        <TabsContent value="published" className="mt-6">
+          {myPublishedModels.length === 0 ? (
+            <Card className="bg-gradient-card border-border shadow-card">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Store className="w-16 h-16 text-muted-foreground mb-4" />
+                <h3 className="text-xl font-semibold mb-2">No Published Models Yet</h3>
+                <p className="text-muted-foreground text-center max-w-md">
+                  Train a model and click the Upload button to publish it to the community marketplace.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {myPublishedModels.map((model) => (
+                <Card
+                  key={model.id}
+                  className="bg-gradient-card border-border hover:border-primary/50 transition-all shadow-card hover:shadow-glow group"
+                >
+                  <CardHeader>
+                    <div className="flex items-start justify-between mb-3">
+                      {model.picture ? (
+                        <div className="w-16 h-16 rounded-xl overflow-hidden shadow-lg ring-2 ring-primary/20 group-hover:ring-primary/40 transition-all">
+                          <img
+                            src={`http://localhost:8081${model.picture}`}
+                            alt={model.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center group-hover:from-primary/30 group-hover:to-secondary/30 transition-all shadow-lg">
+                          <Cpu className="w-8 h-8 text-primary" />
+                        </div>
+                      )}
+                      <Badge
+                        className={`${
+                          model.price === 0
+                            ? "bg-green-500/20 text-green-500 border-green-500/30"
+                            : "bg-primary/20 text-primary border-primary/30"
+                        }`}
+                      >
+                        {model.price === 0 ? "Free" : `$${(model.price / 100).toFixed(2)}`}
+                      </Badge>
+                    </div>
+                    <CardTitle>{model.name}</CardTitle>
+                    <CardDescription className="line-clamp-2">
+                      {model.description}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1">
+                          <Star className="w-4 h-4 text-yellow-500" />
+                          <span>{model.rating_average?.toFixed(1) || "0.0"}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Download className="w-4 h-4" />
+                          <span>{model.downloads_count || 0}</span>
+                        </div>
+                      </div>
+                      <Badge
+                        variant={model.is_active ? "default" : "secondary"}
+                        className="text-xs"
+                      >
+                        {model.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Publish Model Dialog */}
+      <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+        <DialogContent className="bg-card border-border max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-2xl">Publish to Community</DialogTitle>
+            <DialogDescription>
+              Share your trained model "{modelToPublish?.name}" with the community
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="description">Description *</Label>
+              <textarea
+                id="description"
+                className="w-full min-h-[120px] px-3 py-2 rounded-md border border-border bg-background text-foreground resize-none"
+                placeholder="Describe your model, its use case, training data, and performance..."
+                value={publishForm.description}
+                onChange={(e) => setPublishForm({ ...publishForm, description: e.target.value })}
+                required
+              />
+            </div>
+
+            {/* Price */}
+            <div className="space-y-2">
+              <Label htmlFor="price">Price * (USD)</Label>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">$</span>
+                <Input
+                  id="price"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={publishForm.price / 100}
+                  onChange={(e) => setPublishForm({ ...publishForm, price: Math.round(parseFloat(e.target.value || "0") * 100) })}
+                />
+                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                  (0 = Free)
+                </span>
+              </div>
+            </div>
+
+            {/* License Type */}
+            <div className="space-y-2">
+              <Label htmlFor="license_type">License Type *</Label>
+              <select
+                id="license_type"
+                className="w-full px-3 py-2 rounded-md border border-border bg-background text-foreground"
+                value={publishForm.license_type}
+                onChange={(e) => setPublishForm({ ...publishForm, license_type: e.target.value })}
+              >
+                <option value="personal_use">Personal Use Only</option>
+                <option value="commercial">Commercial License</option>
+                <option value="mit">MIT License</option>
+                <option value="apache">Apache 2.0</option>
+                <option value="gpl">GPL</option>
+              </select>
+            </div>
+
+            {/* Optional Fields */}
+            <div className="border-t border-border pt-4 space-y-4">
+              <h4 className="font-semibold text-sm text-muted-foreground">Optional Information</h4>
+
+              {/* Category */}
+              <div className="space-y-2">
+                <Label htmlFor="category">Category</Label>
+                <Input
+                  id="category"
+                  placeholder="e.g., Image Classification, NLP, Computer Vision"
+                  value={publishForm.category}
+                  onChange={(e) => setPublishForm({ ...publishForm, category: e.target.value })}
+                />
+              </div>
+
+              {/* Tags */}
+              <div className="space-y-2">
+                <Label htmlFor="tags">Tags (comma-separated)</Label>
+                <Input
+                  id="tags"
+                  placeholder="e.g., pytorch, cnn, computer-vision"
+                  value={publishForm.tags}
+                  onChange={(e) => setPublishForm({ ...publishForm, tags: e.target.value })}
+                />
+              </div>
+
+              {/* Model Type */}
+              <div className="space-y-2">
+                <Label htmlFor="model_type">Model Type</Label>
+                <Input
+                  id="model_type"
+                  placeholder="e.g., ResNet50, Transformer, CNN"
+                  value={publishForm.model_type}
+                  onChange={(e) => setPublishForm({ ...publishForm, model_type: e.target.value })}
+                />
+              </div>
+
+              {/* Framework */}
+              <div className="space-y-2">
+                <Label htmlFor="framework">Framework</Label>
+                <select
+                  id="framework"
+                  className="w-full px-3 py-2 rounded-md border border-border bg-background text-foreground"
+                  value={publishForm.framework}
+                  onChange={(e) => setPublishForm({ ...publishForm, framework: e.target.value })}
+                >
+                  <option value="">Select Framework</option>
+                  <option value="pytorch">PyTorch</option>
+                  <option value="tensorflow">TensorFlow</option>
+                  <option value="keras">Keras</option>
+                  <option value="scikit-learn">scikit-learn</option>
+                  <option value="jax">JAX</option>
+                </select>
+              </div>
+
+            </div>
+          </div>
+
+          <div className="flex gap-3 justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setPublishDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="bg-gradient-primary hover:opacity-90"
+              onClick={handlePublishSubmit}
+              disabled={!publishForm.description || !publishForm.license_type}
+            >
+              Publish to Community
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>

@@ -8,6 +8,8 @@ interface Model {
   picture: string;
   folder: string[];
   training_script?: string; // Path to training script (e.g., "train.py" or "PokemonModel/train.py")
+  trained_model_path?: string; // Path to trained model file (e.g., "ModelName/best_model.pth")
+  trained_at?: string; // Timestamp when model was trained
   created_at?: string;
   updated_at?: string;
 }
@@ -210,7 +212,17 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
         socket.onmessage = (event) => {
           try {
             const updatedModels: Model[] = JSON.parse(event.data);
-            console.log("Received user-specific models update from WebSocket:", updatedModels);
+            console.log("📥 [WebSocket] Received user-specific models update:", updatedModels);
+
+            // DEBUG: Log trained model paths
+            updatedModels.forEach(model => {
+              if (model.trained_model_path) {
+                console.log(`  ✅ Model "${model.name}" has trained_model_path: ${model.trained_model_path}`);
+              } else {
+                console.log(`  ⚠️  Model "${model.name}" has NO trained_model_path`);
+              }
+            });
+
             setModels(updatedModels);
           } catch (error) {
             console.error("Error parsing WebSocket message:", error);

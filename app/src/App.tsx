@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import Models from "./pages/Models";
+import Community from "./pages/Community";
 import Statistics from "./pages/Statistics";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
@@ -36,6 +37,15 @@ const App = () => (
 		    element={
 		      <ProtectedRoute>
 			<Layout><Models /></Layout>
+		      </ProtectedRoute>
+		    }
+		  />
+
+		  <Route
+		    path="/community"
+		    element={
+		      <ProtectedRoute>
+			<Layout><Community /></Layout>
 		      </ProtectedRoute>
 		    }
 		  />

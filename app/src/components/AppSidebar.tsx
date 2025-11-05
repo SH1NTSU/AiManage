@@ -1,5 +1,6 @@
-import { Brain, BarChart3, Settings } from "lucide-react";
+import { Brain, BarChart3, Settings, Store, User } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { useEffect, useState } from "react";
 import {
   Sidebar,
   SidebarContent,
@@ -13,22 +14,48 @@ import {
 
 const items = [
   { title: "Models", url: "/", icon: Brain },
+  { title: "Community", url: "/community", icon: Store },
   { title: "Statistics", url: "/statistics", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
   const { open } = useSidebar();
+  const [user, setUser] = useState<{ username: string; email: string } | null>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
+
+        const response = await fetch("http://localhost:8081/v1/me", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch user info:", error);
+      }
+    };
+
+    fetchUser();
+  }, []);
 
   return (
     <Sidebar className={open ? "w-60" : "w-16"} collapsible="icon">
-      <SidebarContent>
+      <SidebarContent className="flex flex-col h-full">
         <div className="p-4 flex items-center justify-center border-b border-border">
           <div className="w-10 h-10 rounded-lg bg-gradient-primary flex items-center justify-center">
             <Brain className="w-6 h-6 text-primary-foreground" />
           </div>
         </div>
-        <SidebarGroup>
+        <SidebarGroup className="flex-1">
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => (
@@ -54,6 +81,27 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* User Profile Section */}
+        {user && (
+          <div className="p-4 border-t border-border">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center flex-shrink-0">
+                <User className="w-5 h-5 text-primary" />
+              </div>
+              {open && (
+                <div className="flex flex-col min-w-0 flex-1">
+                  <span className="text-sm font-medium text-foreground truncate">
+                    {user.username}
+                  </span>
+                  <span className="text-xs text-muted-foreground truncate">
+                    {user.email}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </SidebarContent>
     </Sidebar>
   );

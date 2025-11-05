@@ -6,11 +6,25 @@ import (
 	"net/http"
 	"os"
 
+	"server/aiAgent"
 	"server/internal/middlewares"
 	"server/internal/repository"
 )
 
-func DeleteModel(w http.ResponseWriter, r *http.Request) {
+// DeleteModelHandler handles model deletion with cleanup
+type DeleteModelHandler struct {
+	agent *aiAgent.Agent
+}
+
+// NewDeleteModelHandler creates a new delete handler
+func NewDeleteModelHandler(agent *aiAgent.Agent) *DeleteModelHandler {
+	return &DeleteModelHandler{
+		agent: agent,
+	}
+}
+
+// DeleteModel handles model deletion
+func (h *DeleteModelHandler) DeleteModel(w http.ResponseWriter, r *http.Request) {
 	// 1. Get userID from context (set by JWT middleware)
 	//    This is WHO is making the request
 	userID, ok := r.Context().Value(middlewares.UserIDKey).(int)
@@ -52,11 +66,21 @@ func DeleteModel(w http.ResponseWriter, r *http.Request) {
 	
 	modelDir := "./uploads/" + req.Name
 	if err := os.RemoveAll(modelDir); err != nil {
-		log.Println("❌ Failed to create model directory:", err)
-		http.Error(w, "Could not create model directory: "+err.Error(), http.StatusInternalServerError)
+		log.Println("❌ Failed to delete model directory:", err)
+		http.Error(w, "Could not delete model directory: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Clear training statistics for this model
+	if h.agent != nil {
+		trainer := h.agent.GetTrainer()
+		if trainer != nil {
+			clearedCount := trainer.ClearModelTrainings(req.Name)
+			if clearedCount > 0 {
+				log.Printf("✅ Cleared %d training statistics for model: %s", clearedCount, req.Name)
+			}
+		}
+	}
 
 	log.Printf("✅ Deleted model ID: %d", deletedID)
 

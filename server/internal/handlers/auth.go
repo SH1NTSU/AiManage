@@ -17,6 +17,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	var rq struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
+		Username string `json:"username"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&rq); err != nil {
@@ -24,7 +25,13 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user already exists
+	// Validate required fields
+	if rq.Email == "" || rq.Password == "" || rq.Username == "" {
+		http.Error(w, "Email, password, and username are required", http.StatusBadRequest)
+		return
+	}
+
+	// Check if email already exists
 	existing, err := repository.GetUserByEmail(r.Context(), rq.Email)
 	if err != nil {
 		http.Error(w, "DB error", http.StatusInternalServerError)
@@ -32,6 +39,17 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if existing != nil {
 		http.Error(w, "Email already registered", http.StatusConflict)
+		return
+	}
+
+	// Check if username already exists
+	existingUsername, err := repository.GetUserByUsername(r.Context(), rq.Username)
+	if err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	if existingUsername != nil {
+		http.Error(w, "Username already taken", http.StatusConflict)
 		return
 	}
 
@@ -43,7 +61,7 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Insert user
-	_, err = repository.InsertUser(r.Context(), rq.Email, string(hashed))
+	_, err = repository.InsertUser(r.Context(), rq.Email, string(hashed), rq.Username)
 	if err != nil {
 		http.Error(w, "Couldn't insert user into DB", http.StatusInternalServerError)
 		return

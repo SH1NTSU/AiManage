@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [username, setUsername] = useState("");
   const {login, register} = useContext(AuthContext);
   const { toast } = useToast();
 
@@ -34,7 +35,7 @@ const Auth = () => {
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await register(email, password);
+      await register(email, password, username);
       toast({
         title: "Account Created!",
         description: "Your account has been successfully created. You can now log in.",
@@ -43,10 +44,11 @@ const Auth = () => {
       // Clear form
       setEmail("");
       setPassword("");
-    } catch (error) {
+      setUsername("");
+    } catch (error: any) {
       toast({
         title: "Registration Failed",
-        description: "Could not create account. Email might already be in use.",
+        description: error.message || "Could not create account. Username or email might already be in use.",
         variant: "destructive",
       });
     }
@@ -103,6 +105,19 @@ const Auth = () => {
 
             <TabsContent value="signup">
               <form onSubmit={handleSignup} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="signup-username">Username</Label>
+                  <Input
+                    id="signup-username"
+                    type="text"
+                    placeholder="johndoe"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required
+                    minLength={3}
+                    maxLength={50}
+                  />
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="signup-email">Email</Label>
                   <Input

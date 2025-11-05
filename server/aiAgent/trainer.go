@@ -5,13 +5,17 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"server/internal/repository"
 )
 
 // BroadcastCallback is a function type for broadcasting training updates
@@ -140,19 +144,64 @@ func (t *Trainer) executeTraining(ctx context.Context, trainingID string, req Tr
 	println("   Training ID:", trainingID)
 	println("═══════════════════════════════════════\n")
 
+	// Capture file snapshot BEFORE training
+	folderPath := filepath.Join(t.navigator.BaseUploadPath, req.FolderName)
+	beforeSnapshot, err := t.captureFileSnapshot(folderPath)
+	if err != nil {
+		println("⚠️  [EXECUTE] Failed to capture before snapshot:", err.Error())
+		beforeSnapshot = nil // Continue anyway, just won't detect models
+	}
+
 	defer func() {
 		endTime := time.Now()
 		progress.mu.Lock()
 		progress.EndTime = &endTime
-		if progress.Status == StatusRunning {
-			progress.Status = StatusCompleted
-			println("✅ [EXECUTE] Training completed successfully")
+		if progress.Status == StatusCompleted {
+			progress.mu.Unlock() // Unlock before file I/O
+			println("✅ [EXECUTE] Training completed successfully - detecting models")
 
-			// Broadcast completion
+			// Capture file snapshot AFTER training and detect new models
+			if beforeSnapshot != nil {
+				afterSnapshot, err := t.captureFileSnapshot(folderPath)
+				if err == nil {
+					changedModels := t.detectNewOrModifiedModels(beforeSnapshot, afterSnapshot)
+					if len(changedModels) > 0 {
+						println("🔍 [EXECUTE] Found", len(changedModels), "new/modified model files")
+						bestModel := t.selectBestModel(changedModels)
+						if bestModel != "" {
+							// Convert to relative path from base upload directory
+							relPath, err := filepath.Rel(t.navigator.BaseUploadPath, bestModel)
+							if err != nil {
+								relPath = bestModel // Fallback to absolute path
+							}
+							progress.mu.Lock()
+							progress.ModelPath = relPath
+							progress.mu.Unlock()
+							println("💾 [EXECUTE] Saved trained model path:", relPath)
+
+							// Update database with trained model path
+							dbCtx := context.Background()
+							if err := repository.UpdateTrainedModelPath(dbCtx, req.FolderName, relPath); err != nil {
+								println("⚠️  [EXECUTE] Failed to update database with model path:", err.Error())
+							} else {
+								println("✅ [EXECUTE] Database updated with trained model path")
+							}
+						}
+					} else {
+						println("ℹ️  [EXECUTE] No new model files detected")
+					}
+				} else {
+					println("⚠️  [EXECUTE] Failed to capture after snapshot:", err.Error())
+				}
+			}
+
+			// Broadcast completion with model path
+			progress.mu.Lock()
 			if broadcastCallback != nil {
 				broadcastCallback(trainingID, "status", map[string]interface{}{
 					"status":        StatusCompleted,
 					"error_message": "",
+					"model_path":    progress.ModelPath,
 				})
 			}
 		}
@@ -207,6 +256,9 @@ func (t *Trainer) executeTraining(ctx context.Context, trainingID string, req Tr
 	cmd.Env = os.Environ()
 	// Force Python unbuffered output for real-time logs
 	cmd.Env = append(cmd.Env, "PYTHONUNBUFFERED=1")
+	// Optional hints for standardized model saving (users can use or ignore)
+	cmd.Env = append(cmd.Env, fmt.Sprintf("MODEL_OUTPUT_DIR=%s", filepath.Join(absWorkingDir, "saved_models")))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("MODEL_NAME=%s", req.FolderName))
 	for key, val := range req.Env {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, val))
 	}
@@ -449,4 +501,222 @@ func (t *Trainer) CleanupOldTrainings(olderThan time.Duration) {
 			delete(t.activeTraining, id)
 		}
 	}
+}
+
+// ClearModelTrainings removes all training progress for a specific model
+func (t *Trainer) ClearModelTrainings(modelName string) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	count := 0
+	for id := range t.activeTraining {
+		// Training IDs are formatted as "{modelName}_{timestamp}"
+		if strings.HasPrefix(id, modelName+"_") {
+			delete(t.activeTraining, id)
+			count++
+		}
+	}
+
+	if count > 0 {
+		log.Printf("🗑️  Cleared %d training progress entries for model '%s'", count, modelName)
+	}
+
+	return count
+}
+
+// FileSnapshot represents a snapshot of a file at a point in time
+type FileSnapshot struct {
+	Path    string
+	ModTime time.Time
+	Size    int64
+}
+
+// captureFileSnapshot records all files in directory and subdirectories
+func (t *Trainer) captureFileSnapshot(folderPath string) (map[string]FileSnapshot, error) {
+	snapshot := make(map[string]FileSnapshot)
+
+	err := filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+
+		snapshot[path] = FileSnapshot{
+			Path:    path,
+			ModTime: info.ModTime(),
+			Size:    info.Size(),
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to capture snapshot: %w", err)
+	}
+
+	println("📸 [SNAPSHOT] Captured", len(snapshot), "files in", folderPath)
+	return snapshot, nil
+}
+
+// detectNewOrModifiedModels compares before/after snapshots and returns changed model files
+func (t *Trainer) detectNewOrModifiedModels(before, after map[string]FileSnapshot) []string {
+	// Common model file extensions across frameworks
+	modelExtensions := []string{
+		".pth", ".pt",           // PyTorch
+		".h5", ".keras",         // TensorFlow/Keras
+		".pkl", ".pickle",       // scikit-learn, general Python
+		".ckpt",                 // TensorFlow checkpoints
+		".pb",                   // TensorFlow protobuf
+		".onnx",                 // ONNX
+		".safetensors",          // Hugging Face
+		".joblib",               // scikit-learn
+		".model",                // Generic
+	}
+
+	var changedModels []string
+
+	for path, afterFile := range after {
+		beforeFile, existed := before[path]
+
+		// Check if it's a model file
+		isModel := false
+		ext := filepath.Ext(path)
+		for _, modelExt := range modelExtensions {
+			if ext == modelExt {
+				isModel = true
+				break
+			}
+		}
+
+		if !isModel {
+			continue
+		}
+
+		// New file or modified file
+		if !existed {
+			changedModels = append(changedModels, path)
+			println("🆕 [DETECT] New model file:", filepath.Base(path))
+		} else if afterFile.ModTime.After(beforeFile.ModTime) || afterFile.Size != beforeFile.Size {
+			changedModels = append(changedModels, path)
+			println("♻️  [DETECT] Modified model file:", filepath.Base(path))
+		}
+	}
+
+	return changedModels
+}
+
+// selectBestModel picks the most likely "final" model from a list of candidates
+func (t *Trainer) selectBestModel(changedModels []string) string {
+	if len(changedModels) == 0 {
+		return ""
+	}
+
+	if len(changedModels) == 1 {
+		return changedModels[0]
+	}
+
+	println("🤔 [SELECT] Multiple models detected, selecting best one...")
+
+	// Priority 1: Look for "best", "final", or "trained" in filename
+	for _, path := range changedModels {
+		basename := filepath.Base(path)
+		basenameLower := filepath.Base(filepath.Base(path))
+		if containsAny(basenameLower, []string{"best", "final", "trained"}) {
+			println("✨ [SELECT] Selected by keyword:", basename)
+			return path
+		}
+	}
+
+	// Priority 2: Prefer files in standard output directories
+	for _, path := range changedModels {
+		if containsAny(path, []string{"saved_models", "outputs", "checkpoints", "models"}) {
+			println("📁 [SELECT] Selected from standard directory:", filepath.Base(path))
+			return path
+		}
+	}
+
+	// Priority 3: Largest file (usually the final model, not a checkpoint)
+	var largestPath string
+	var largestSize int64
+	for _, path := range changedModels {
+		if info, err := os.Stat(path); err == nil {
+			if info.Size() > largestSize {
+				largestSize = info.Size()
+				largestPath = path
+			}
+		}
+	}
+
+	if largestPath != "" {
+		println("📏 [SELECT] Selected largest file:", filepath.Base(largestPath), fmt.Sprintf("(%.2f MB)", float64(largestSize)/1024/1024))
+		return largestPath
+	}
+
+	// Fallback: Return the last (newest by modification time) model
+	var newestPath string
+	var newestTime time.Time
+	for _, path := range changedModels {
+		if info, err := os.Stat(path); err == nil {
+			if info.ModTime().After(newestTime) {
+				newestTime = info.ModTime()
+				newestPath = path
+			}
+		}
+	}
+
+	if newestPath != "" {
+		println("⏰ [SELECT] Selected newest file:", filepath.Base(newestPath))
+		return newestPath
+	}
+
+	return changedModels[len(changedModels)-1]
+}
+
+// containsAny checks if string contains any of the substrings
+func containsAny(s string, substrings []string) bool {
+	sLower := filepath.Base(s)
+	for _, substr := range substrings {
+		if contains(sLower, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+// contains checks if a string contains a substring (case-insensitive)
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && hasSubstring(s, substr))
+}
+
+// hasSubstring performs case-insensitive substring search
+func hasSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if matchesAt(s, substr, i) {
+			return true
+		}
+	}
+	return false
+}
+
+// matchesAt checks if substr matches s starting at position i (case-insensitive)
+func matchesAt(s, substr string, i int) bool {
+	for j := 0; j < len(substr); j++ {
+		c1 := s[i+j]
+		c2 := substr[j]
+		if toLower(c1) != toLower(c2) {
+			return false
+		}
+	}
+	return true
+}
+
+// toLower converts a byte to lowercase
+func toLower(c byte) byte {
+	if c >= 'A' && c <= 'Z' {
+		return c + ('a' - 'A')
+	}
+	return c
 }

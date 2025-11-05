@@ -1,6 +1,6 @@
 import { useContext, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, TrendingUp, Clock, Zap, Play, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Activity, TrendingUp, Clock, Zap, Play, CheckCircle, AlertCircle, Loader2, Download, RefreshCw } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -16,14 +16,90 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { TrainingContext } from "@/context/trainingContext";
+import { ModelContext } from "@/context/modelContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SmoothProgressBar } from "@/components/SmoothProgressBar";
+import { useToast } from "@/hooks/use-toast";
 
 const Statistics = () => {
   const trainingContext = useContext(TrainingContext);
+  const modelContext = useContext(ModelContext);
+  const { toast } = useToast();
   const [isPolling, setIsPolling] = useState(false);
   const [latestTrainingId, setLatestTrainingId] = useState<string | null>(null);
+
+  // Extract model name from training ID (format: "ModelName_timestamp")
+  const getModelNameFromTrainingId = (trainingId: string): string => {
+    return trainingId.split('_')[0];
+  };
+
+  // Find model by name
+  const findModelByName = (modelName: string) => {
+    return modelContext?.models.find(m => m.name === modelName);
+  };
+
+  // Refresh models manually
+  const handleRefreshModels = async () => {
+    console.log("🔄 [DEBUG] Manually refreshing models...");
+    // The modelContext should automatically fetch via WebSocket, but we can trigger a re-render
+    if (modelContext) {
+      toast({
+        title: "Refreshing Models",
+        description: "Fetching latest model data...",
+      });
+    }
+  };
+
+  // Download trained model
+  const handleDownloadModel = (modelId: number, modelName: string) => {
+    const token = localStorage.getItem("token");
+    if (!token) {
+      toast({
+        title: "Error",
+        description: "You must be logged in to download models",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const downloadUrl = `http://localhost:8081/v1/downloadModel?model_id=${modelId}`;
+
+    // Create a temporary link and trigger download
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.setAttribute('download', ''); // This suggests to download
+
+    // Add auth header by fetching first, then creating blob URL
+    fetch(downloadUrl, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    })
+      .then(response => {
+        if (!response.ok) throw new Error('Download failed');
+        return response.blob();
+      })
+      .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        link.href = url;
+        link.click();
+        window.URL.revokeObjectURL(url);
+
+        toast({
+          title: "Download Started",
+          description: `Downloading ${modelName}...`,
+        });
+      })
+      .catch(error => {
+        console.error('Download error:', error);
+        toast({
+          title: "Download Failed",
+          description: "Failed to download the trained model",
+          variant: "destructive"
+        });
+      });
+  };
 
   // Poll for training progress
   useEffect(() => {
@@ -74,6 +150,19 @@ const Statistics = () => {
 
   // Show metrics if available
   if (metrics) {
+    // Get the model info for download button
+    const modelName = latestTrainingId ? getModelNameFromTrainingId(latestTrainingId) : null;
+    const model = modelName ? findModelByName(modelName) : null;
+
+    // DEBUG: Log model info
+    console.log("🔍 [DEBUG] Download Button Check:");
+    console.log("  - Latest Training ID:", latestTrainingId);
+    console.log("  - Extracted Model Name:", modelName);
+    console.log("  - Found Model:", model);
+    console.log("  - Available Models:", modelContext?.models);
+    console.log("  - Model has trained_model_path:", model?.trained_model_path);
+    console.log("  - Model trained_at:", model?.trained_at);
+
     return (
       <div className="space-y-6 animate-slide-up">
         <div className="flex items-center justify-between">
@@ -83,13 +172,67 @@ const Statistics = () => {
               Comprehensive performance metrics and insights
             </p>
           </div>
-          <Button
-            variant="outline"
-            onClick={() => trainingContext.setMetrics(null)}
-          >
-            Back to Overview
-          </Button>
+          <div className="flex gap-3">
+            {model && model.trained_model_path ? (
+              <Button
+                className="bg-gradient-primary hover:opacity-90 shadow-glow"
+                onClick={() => handleDownloadModel(model.id, model.name)}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download Trained Model
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={handleRefreshModels}
+                className="border-primary/30"
+              >
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Refresh (Model might be ready)
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={() => trainingContext.setMetrics(null)}
+            >
+              Back to Overview
+            </Button>
+          </div>
         </div>
+
+        {/* Trained Model Info Card */}
+        {model && model.trained_model_path && (
+          <Card className="bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/30 shadow-glow">
+            <CardContent className="pt-6">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-lg bg-primary/20 flex items-center justify-center">
+                    <CheckCircle className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-lg">Trained Model Ready</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {model.trained_model_path.split('/').pop()}
+                    </p>
+                    {model.trained_at && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Trained: {new Date(model.trained_at).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  className="bg-primary hover:bg-primary/90"
+                  onClick={() => handleDownloadModel(model.id, model.name)}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Performance Overview Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

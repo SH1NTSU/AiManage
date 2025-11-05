@@ -29,8 +29,11 @@ func NewRouter() http.Handler {
 
 	// Initialize Training Handler (if AI Agent is available)
 	var trainingHandler *handlers.TrainingHandler
+	var deleteModelHandler *handlers.DeleteModelHandler
 	if aiAgentHandler != nil {
-		trainingHandler = handlers.NewTrainingHandler(aiAgentHandler.GetAgent())
+		agent := aiAgentHandler.GetAgent()
+		trainingHandler = handlers.NewTrainingHandler(agent)
+		deleteModelHandler = handlers.NewDeleteModelHandler(agent)
 
 		// Set up broadcast callback for training updates
 		broadcaster := GetTrainingBroadcaster()
@@ -51,10 +54,19 @@ func NewRouter() http.Handler {
 		r.Group(func(protected chi.Router) {
 			protected.Use(middlewares.JWTGuard)
 			protected.Get("/health", handlers.HealthCheckHandler)
+			protected.Get("/me", handlers.GetCurrentUserHandler)
 
 			protected.Post("/insert", handlers.InsertHandler)
 			protected.Get("/getModels", handlers.ReadHandler)
-			protected.Delete("/deleteModel", handlers.DeleteModel)
+			if deleteModelHandler != nil {
+				protected.Delete("/deleteModel", deleteModelHandler.DeleteModel)
+			}
+			protected.Get("/downloadModel", handlers.DownloadTrainedModelHandler)
+
+			// Community marketplace routes
+			protected.Post("/publish", handlers.PubHandler)
+			protected.Get("/published-models", handlers.GetPublishedModelsHandler)
+			protected.Get("/my-published-models", handlers.GetMyPublishedModelsHandler)
 
 			// AI Agent routes
 			if aiAgentHandler != nil {
