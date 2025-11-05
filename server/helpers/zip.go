@@ -5,9 +5,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
-
-
 
 func Unzip(src, dest string) error {
 	r, err := zip.OpenReader(src)
@@ -16,8 +15,38 @@ func Unzip(src, dest string) error {
 	}
 	defer r.Close()
 
+	// Detect if all files are under a common root directory
+	var rootDir string
+	if len(r.File) > 0 {
+		firstPath := r.File[0].Name
+		parts := strings.Split(filepath.ToSlash(firstPath), "/")
+		if len(parts) > 1 {
+			potentialRoot := parts[0] + "/"
+			allUnderRoot := true
+			for _, f := range r.File {
+				if !strings.HasPrefix(filepath.ToSlash(f.Name), potentialRoot) {
+					allUnderRoot = false
+					break
+				}
+			}
+			if allUnderRoot {
+				rootDir = potentialRoot
+			}
+		}
+	}
+
 	for _, f := range r.File {
-		fpath := filepath.Join(dest, f.Name)
+		// Strip the root directory if detected
+		extractPath := f.Name
+		if rootDir != "" {
+			extractPath = strings.TrimPrefix(filepath.ToSlash(f.Name), rootDir)
+			// Skip if it's the root directory itself
+			if extractPath == "" {
+				continue
+			}
+		}
+
+		fpath := filepath.Join(dest, extractPath)
 
 		if f.FileInfo().IsDir() {
 			os.MkdirAll(fpath, os.ModePerm)
@@ -38,7 +67,7 @@ func Unzip(src, dest string) error {
 		}
 
 		_, err = io.Copy(outFile, rc)
-			
+
 		outFile.Close()
 		rc.Close()
 

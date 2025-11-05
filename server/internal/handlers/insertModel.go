@@ -19,12 +19,11 @@ import (
 
 func InsertHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("📩 InsertHandler called")
-	
+
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusOK)
 		return
 	}
-
 	// Parse form
 	err := r.ParseMultipartForm(200 << 20) // 200 MB for bigger zips
 	if err != nil {

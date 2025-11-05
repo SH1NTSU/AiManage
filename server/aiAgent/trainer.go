@@ -14,6 +14,16 @@ import (
 	"time"
 )
 
+// BroadcastCallback is a function type for broadcasting training updates
+type BroadcastCallback func(trainingID string, updateType string, data interface{})
+
+var broadcastCallback BroadcastCallback
+
+// SetBroadcastCallback sets the callback function for broadcasting updates
+func SetBroadcastCallback(callback BroadcastCallback) {
+	broadcastCallback = callback
+}
+
 // TrainingStatus represents the current state of training
 type TrainingStatus string
 
@@ -137,6 +147,14 @@ func (t *Trainer) executeTraining(ctx context.Context, trainingID string, req Tr
 		if progress.Status == StatusRunning {
 			progress.Status = StatusCompleted
 			println("✅ [EXECUTE] Training completed successfully")
+
+			// Broadcast completion
+			if broadcastCallback != nil {
+				broadcastCallback(trainingID, "status", map[string]interface{}{
+					"status":        StatusCompleted,
+					"error_message": "",
+				})
+			}
 		}
 		progress.mu.Unlock()
 		println("\n═══════════════════════════════════════")
@@ -150,22 +168,31 @@ func (t *Trainer) executeTraining(ctx context.Context, trainingID string, req Tr
 	progress.mu.Unlock()
 	println("▶️  [EXECUTE] Status changed to RUNNING")
 
+	// Broadcast status change
+	if broadcastCallback != nil {
+		broadcastCallback(trainingID, "status", map[string]interface{}{
+			"status":        StatusRunning,
+			"error_message": "",
+		})
+	}
+
 	// Prepare command
+	workingDir := filepath.Join(t.navigator.BaseUploadPath, req.FolderName)
+	absWorkingDir, err := filepath.Abs(workingDir)
+	if err != nil {
+		t.setError(progress, trainingID, fmt.Errorf("failed to resolve working directory: %w", err))
+		return
+	}
+
+	// Always use direct python execution (skip wrapper scripts to avoid package compilation)
 	pythonCmd := req.PythonCommand
 	if pythonCmd == "" {
 		pythonCmd = "python3"
 	}
 
-	scriptPath := filepath.Join(t.navigator.BaseUploadPath, req.FolderName, req.ScriptName)
-	workingDir := filepath.Join(t.navigator.BaseUploadPath, req.FolderName)
+	scriptPath := filepath.Join(absWorkingDir, req.ScriptName)
 
-	// Check and install requirements before training
-	if err := t.installRequirements(ctx, workingDir, progress); err != nil {
-		println("⚠️  [EXECUTE] Requirements installation warning:", err.Error())
-		// Don't fail training if requirements installation fails - the packages might already be installed
-	}
-
-	println("📍 [EXECUTE] Working directory:", workingDir)
+	println("📍 [EXECUTE] Working directory:", absWorkingDir)
 	println("🐍 [EXECUTE] Python command:", pythonCmd)
 	println("📜 [EXECUTE] Script path:", scriptPath)
 
@@ -174,10 +201,12 @@ func (t *Trainer) executeTraining(ctx context.Context, trainingID string, req Tr
 	println("🔧 [EXECUTE] Full command:", pythonCmd, args)
 
 	cmd := exec.CommandContext(ctx, pythonCmd, args...)
-	cmd.Dir = workingDir
+	cmd.Dir = absWorkingDir
 
 	// Set environment variables
 	cmd.Env = os.Environ()
+	// Force Python unbuffered output for real-time logs
+	cmd.Env = append(cmd.Env, "PYTHONUNBUFFERED=1")
 	for key, val := range req.Env {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, val))
 	}
@@ -187,14 +216,14 @@ func (t *Trainer) executeTraining(ctx context.Context, trainingID string, req Tr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		println("❌ [EXECUTE] Failed to create stdout pipe:", err.Error())
-		t.setError(progress, fmt.Errorf("failed to create stdout pipe: %w", err))
+		t.setError(progress, trainingID, fmt.Errorf("failed to create stdout pipe: %w", err))
 		return
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		println("❌ [EXECUTE] Failed to create stderr pipe:", err.Error())
-		t.setError(progress, fmt.Errorf("failed to create stderr pipe: %w", err))
+		t.setError(progress, trainingID, fmt.Errorf("failed to create stderr pipe: %w", err))
 		return
 	}
 
@@ -202,7 +231,7 @@ func (t *Trainer) executeTraining(ctx context.Context, trainingID string, req Tr
 	println("🚀 [EXECUTE] Starting Python process...")
 	if err := cmd.Start(); err != nil {
 		println("❌ [EXECUTE] Failed to start process:", err.Error())
-		t.setError(progress, fmt.Errorf("failed to start training: %w", err))
+		t.setError(progress, trainingID, fmt.Errorf("failed to start training: %w", err))
 		return
 	}
 	println("✅ [EXECUTE] Python process started successfully!")
@@ -214,12 +243,12 @@ func (t *Trainer) executeTraining(ctx context.Context, trainingID string, req Tr
 	println("👀 [EXECUTE] Starting output readers...")
 	go func() {
 		defer wg.Done()
-		t.readOutput(stdout, progress, false)
+		t.readOutput(stdout, progress, trainingID, false)
 	}()
 
 	go func() {
 		defer wg.Done()
-		t.readOutput(stderr, progress, true)
+		t.readOutput(stderr, progress, trainingID, true)
 	}()
 
 	wg.Wait()
@@ -229,7 +258,7 @@ func (t *Trainer) executeTraining(ctx context.Context, trainingID string, req Tr
 	println("⏳ [EXECUTE] Waiting for process to complete...")
 	if err := cmd.Wait(); err != nil {
 		println("❌ [EXECUTE] Process failed:", err.Error())
-		t.setError(progress, fmt.Errorf("training failed: %w", err))
+		t.setError(progress, trainingID, fmt.Errorf("training failed: %w", err))
 		return
 	}
 
@@ -240,7 +269,7 @@ func (t *Trainer) executeTraining(ctx context.Context, trainingID string, req Tr
 }
 
 // readOutput reads and processes output from the training script
-func (t *Trainer) readOutput(reader io.Reader, progress *TrainingProgress, isError bool) {
+func (t *Trainer) readOutput(reader io.Reader, progress *TrainingProgress, trainingID string, isError bool) {
 	streamType := "stdout"
 	if isError {
 		streamType = "stderr"
@@ -265,6 +294,14 @@ func (t *Trainer) readOutput(reader io.Reader, progress *TrainingProgress, isErr
 		progress.Logs = append(progress.Logs, line)
 		progress.mu.Unlock()
 
+		// Broadcast log line
+		if broadcastCallback != nil {
+			broadcastCallback(trainingID, "log", map[string]interface{}{
+				"message":  line,
+				"is_error": isError,
+			})
+		}
+
 		// Try to parse metrics from the line
 		if metrics := t.parseMetrics(line); metrics != nil {
 			println("📊 [METRICS] Parsed:", fmt.Sprintf("Epoch %d/%d, Loss: %.4f, Acc: %.2f%%",
@@ -277,6 +314,22 @@ func (t *Trainer) readOutput(reader io.Reader, progress *TrainingProgress, isErr
 				progress.TotalEpochs = metrics.TotalEpochs
 			}
 			progress.mu.Unlock()
+
+			// Broadcast metrics update
+			if broadcastCallback != nil {
+				broadcastCallback(trainingID, "metrics", metrics)
+			}
+
+			// Broadcast progress update
+			if broadcastCallback != nil {
+				progress.mu.RLock()
+				broadcastCallback(trainingID, "progress", map[string]interface{}{
+					"status":        progress.Status,
+					"current_epoch": progress.CurrentEpoch,
+					"total_epochs":  progress.TotalEpochs,
+				})
+				progress.mu.RUnlock()
+			}
 		}
 	}
 
@@ -342,59 +395,21 @@ func (t *Trainer) parseMetrics(line string) *TrainingMetrics {
 }
 
 // setError sets an error on the progress
-func (t *Trainer) setError(progress *TrainingProgress, err error) {
+func (t *Trainer) setError(progress *TrainingProgress, trainingID string, err error) {
 	progress.mu.Lock()
 	defer progress.mu.Unlock()
 	progress.Status = StatusFailed
 	progress.ErrorMessage = err.Error()
 	endTime := time.Now()
 	progress.EndTime = &endTime
-}
 
-// installRequirements checks for requirements.txt and installs dependencies
-func (t *Trainer) installRequirements(ctx context.Context, workingDir string, progress *TrainingProgress) error {
-	// Check if requirements.txt exists
-	requirementsPath := filepath.Join(workingDir, "requirements.txt")
-	if _, err := os.Stat(requirementsPath); os.IsNotExist(err) {
-		println("ℹ️  [INSTALL] No requirements.txt found, skipping installation")
-		return nil
+	// Broadcast error
+	if broadcastCallback != nil {
+		broadcastCallback(trainingID, "status", map[string]interface{}{
+			"status":        StatusFailed,
+			"error_message": err.Error(),
+		})
 	}
-
-	println("📦 [INSTALL] Found requirements.txt, installing dependencies...")
-	progress.mu.Lock()
-	progress.Logs = append(progress.Logs, "📦 Installing Python dependencies from requirements.txt...")
-	progress.mu.Unlock()
-
-	// Run pip install -r requirements.txt
-	cmd := exec.CommandContext(ctx, "python3", "-m", "pip", "install", "-r", "requirements.txt")
-	cmd.Dir = workingDir
-
-	// Capture output
-	output, err := cmd.CombinedOutput()
-	outputStr := string(output)
-
-	// Log the installation output
-	progress.mu.Lock()
-	progress.Logs = append(progress.Logs, outputStr)
-	progress.mu.Unlock()
-
-	println("📦 [INSTALL] Installation output:")
-	println(outputStr)
-
-	if err != nil {
-		println("❌ [INSTALL] Installation failed:", err.Error())
-		progress.mu.Lock()
-		progress.Logs = append(progress.Logs, fmt.Sprintf("⚠️  Dependency installation failed: %s", err.Error()))
-		progress.mu.Unlock()
-		return fmt.Errorf("failed to install requirements: %w", err)
-	}
-
-	println("✅ [INSTALL] Dependencies installed successfully")
-	progress.mu.Lock()
-	progress.Logs = append(progress.Logs, "✅ Dependencies installed successfully")
-	progress.mu.Unlock()
-
-	return nil
 }
 
 // GetProgress returns the current progress of a training job

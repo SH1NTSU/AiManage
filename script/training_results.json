@@ -1,8 +1,0 @@
-{
-    "model_name": "Pokemon",
-    "train_file": "../server/uploads/Pokemon/train.py",
-    "stats": {},
-    "trained_model": null,
-    "log_file": "../server/uploads/Pokemon/train.log",
-    "finished_at": "2025-10-03T13:34:22.192367"
-}

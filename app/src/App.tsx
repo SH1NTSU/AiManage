@@ -1,56 +1,71 @@
-// App.jsx
-import { BrowserRouter, Routes, Route, Outlet } from 'react-router-dom'
-import './App.css'
-import Nav from './components/Nav/Nav.tsx'
-import Home from './components/Home/Home.tsx'
-import Settings from './components/Settings/Settings.tsx'
-import Stats from './components/Statistics/Statistics.tsx'
-import { ModelProvider } from './context/modelContext.tsx'
-import Login from './components/Auth/Login.tsx'
-import Register from './components/Auth/Register.tsx'
-import { AuthProvider } from './context/authContext.tsx'
-import ProtectedRoute from './ProtectedRoute.tsx'
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { Layout } from "./components/Layout";
+import Models from "./pages/Models";
+import Statistics from "./pages/Statistics";
+import Settings from "./pages/Settings";
+import Auth from "./pages/Auth";
+import NotFound from "./pages/NotFound";
+import { AuthProvider } from "./context/authContext";
+import { ModelProvider } from "./context/modelContext";
+import { TrainingProvider } from "./context/trainingContext";
+import ProtectedRoute from "./components/ProtectedRoute";
 
-function Layout() {
-  return (
-    <>
-      <Nav />
-      <div className="main-content">
-        <Outlet /> {/* This will render the current route */}
-      </div>
-    </>
-  )
-}
+const queryClient = new QueryClient();
 
-function App() {  
-return (
-<AuthProvider>
-  <ModelProvider>
+
+const App = () => (
     <BrowserRouter>
-      <Routes>
+	<AuthProvider>
+	  <ModelProvider>
+	    <TrainingProvider>
+	      <QueryClientProvider client={queryClient}>
+	    <TooltipProvider>
+	      <Toaster />
+	      <Sonner />
+		<Routes>
+		  {/* Public */}
+		  <Route path="/auth" element={<Auth />} />
 
-        <Route 
-          path="/" 
-          element={
-            <ProtectedRoute>
-              <Layout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Home />} /> 
-          <Route path="settings" element={<Settings />} />
-          <Route path="stats" element={<Stats />} />
-        </Route>
+		  {/* Protected */}
+		  <Route
+		    path="/"
+		    element={
+		      <ProtectedRoute>
+			<Layout><Models /></Layout>
+		      </ProtectedRoute>
+		    }
+		  />
 
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
+		  <Route
+		    path="/statistics"
+		    element={
+		      <ProtectedRoute>
+			<Layout><Statistics /></Layout>
+		      </ProtectedRoute>
+		    }
+		  />
 
-      </Routes>
+		  <Route
+		    path="/settings"
+		    element={
+		      <ProtectedRoute>
+			<Layout><Settings /></Layout>
+		      </ProtectedRoute>
+		    }
+		  />
+
+		  <Route path="*" element={<NotFound />} />
+		</Routes>
+	    </TooltipProvider>
+	      </QueryClientProvider>
+	    </TrainingProvider>
+	  </ModelProvider>
+	  </AuthProvider>
     </BrowserRouter>
-  </ModelProvider>
-</AuthProvider>
-  )
-}
+);
 
-export default App
-
+export default App;

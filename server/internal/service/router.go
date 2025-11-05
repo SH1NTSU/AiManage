@@ -2,6 +2,7 @@ package service
 
 import (
 	"net/http"
+	"server/aiAgent"
 	"server/internal/handlers"
 	"server/internal/middlewares"
 
@@ -15,6 +16,10 @@ func NewRouter() http.Handler {
 
 	r.Use(middlewares.WithCORS)
 
+	// Serve static files from uploads directory
+	fileServer := http.FileServer(http.Dir("./uploads"))
+	r.Handle("/uploads/*", http.StripPrefix("/uploads/", fileServer))
+
 	// Initialize AI Agent Handler
 	aiAgentHandler, err := handlers.NewAIAgentHandler()
 	if err != nil {
@@ -26,12 +31,19 @@ func NewRouter() http.Handler {
 	var trainingHandler *handlers.TrainingHandler
 	if aiAgentHandler != nil {
 		trainingHandler = handlers.NewTrainingHandler(aiAgentHandler.GetAgent())
+
+		// Set up broadcast callback for training updates
+		broadcaster := GetTrainingBroadcaster()
+		aiAgent.SetBroadcastCallback(func(trainingID string, updateType string, data interface{}) {
+			broadcaster.BroadcastTrainingUpdate(trainingID, updateType, data)
+		})
 	}
 
 	r.Route("/v1", func(r chi.Router) {
 
 
 		r.HandleFunc("/ws", WsHandler)
+		r.HandleFunc("/ws/training", TrainingWSHandler)
 
 		r.Post("/register", handlers.RegisterHandler)
 		r.Post("/login", handlers.LoginHandler)

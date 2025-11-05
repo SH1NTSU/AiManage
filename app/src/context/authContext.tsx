@@ -1,6 +1,7 @@
 import axios from "axios";
 import { createContext, useState, useEffect, type ReactNode } from "react";
 import { jwtDecode } from "jwt-decode";
+import { useNavigate } from "react-router-dom";
 
 interface TokenPayload { exp: number; }
 interface AuthContextType {
@@ -21,7 +22,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
+  const navigate = useNavigate()
   // 🧠 track ongoing refresh
   let refreshing = false;
   let refreshPromise: Promise<void> | null = null;
@@ -36,7 +37,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     refreshing = true;
     refreshPromise = (async () => {
       try {
-        const res = await axios.get("http://localhost:8080/v1/refresh", { withCredentials: true });
+        const res = await axios.get("http://localhost:8081/v1/refresh", { withCredentials: true });
         console.log("✅ Token refreshed");
         setToken(res.data.token);
         localStorage.setItem("token", res.data.token);
@@ -69,15 +70,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, password: string) => {
     setLoading(true); setError(null);
     try {
-      const res = await axios.post("http://localhost:8080/v1/login", { email, password });
-      setToken(res.data.token); localStorage.setItem("token", res.data.token);
+      const res = await axios.post("http://localhost:8081/v1/login", { email, password });
+          setToken(res.data.token); 
+
+	  localStorage.setItem("token", res.data.token);
+      	  navigate("/"); 
     } catch (err: any) { setError(err.response?.data || "Login failed"); }
     finally { setLoading(false); }
   };
 
   const register = async (email: string, password: string) => {
     setLoading(true); setError(null);
-    try { await axios.post("http://localhost:8080/v1/register", { email, password }); }
+    try { await axios.post("http://localhost:8081/v1/register", { email, password }); }
     catch (err: any) { setError(err.response?.data || "Register failed"); }
     finally { setLoading(false); }
   };

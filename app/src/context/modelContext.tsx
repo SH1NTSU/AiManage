@@ -2,20 +2,27 @@ import axios from "axios";
 import { createContext, type ReactNode, useEffect, useState } from "react";
 
 interface Model {
-  _id?: string; // Add this if your backend returns MongoDB IDs
+  id: number;
+  user_id: number;
   name: string;
-  picture: string; 
+  picture: string;
   folder: string[];
+  training_script?: string; // Path to training script (e.g., "train.py" or "PokemonModel/train.py")
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface ModelContextType {
   name: string;
   picture: File | null;
   folder: File[] | null;
+  trainingScript: string;
   setName: (name: string) => void;
   setPicture: (file: File | null) => void;
   setFolder: (files: File[] | null) => void;
+  setTrainingScript: (script: string) => void;
   send: () => Promise<void>;
+  deleteModel: (modelId: number, modelName: string) => Promise<void>;
   models: Model[];
   loading: boolean;
   error: string | null;
@@ -27,6 +34,7 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
   const [name, setName] = useState<string>("");
   const [picture, setPicture] = useState<File | null>(null);
   const [folder, setFolder] = useState<File[] | null>(null);
+  const [trainingScript, setTrainingScript] = useState<string>("train.py");
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,10 +42,11 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
   const send = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       const formData = new FormData();
       formData.append("name", name);
+      formData.append("training_script", trainingScript);
 
       if (picture) {
         formData.append("picture", picture);
@@ -50,30 +59,32 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
       console.log("Sending form data with:", {
         name,
         picture: picture?.name,
-        folder: folder?.map(f => f.name)
+        folder: folder?.map(f => f.name),
+        training_script: trainingScript
       });
 
       const res = await axios.post(
-        "http://localhost:8080/v1/insert",
+        "http://localhost:8081/v1/insert",
         formData,
-        { 
-          headers: { 
-            "Content-Type": "multipart/form-data" 
+        {
+          headers: {
+            "Content-Type": "multipart/form-data"
           },
           timeout: 30000 // 30 second timeout
         }
       );
 
       console.log("Upload successful:", res.data);
-      
+
       // Reset form after successful upload
       setName("");
       setPicture(null);
       setFolder(null);
-      
+      setTrainingScript("train.py");
+
     } catch (err: any) {
       console.error("Upload failed:", err);
-      
+
       if (err.response) {
         // Server responded with error status
         setError(`Server error: ${err.response.status} - ${err.response.data}`);
@@ -89,6 +100,91 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const deleteModel = async (modelId: number, modelName: string) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        setError("No authentication token found");
+        return;
+      }
+
+      console.log(`Deleting model: ${modelName} (ID: ${modelId})`);
+
+      const res = await axios.delete(
+        "http://localhost:8081/v1/deleteModel",
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          data: {
+            model_id: modelId,
+            name: modelName
+          },
+          timeout: 10000 // 10 second timeout
+        }
+      );
+
+      console.log("Delete successful:", res.data);
+
+      // Optimistically remove the model from local state
+      setModels(prevModels => prevModels.filter(model => model.id !== modelId));
+
+    } catch (err: any) {
+      console.error("Delete failed:", err);
+
+      if (err.response) {
+        setError(`Server error: ${err.response.status} - ${err.response.data}`);
+      } else if (err.request) {
+        setError("Network error - no response from server");
+      } else {
+        setError(`Error: ${err.message}`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch initial models from authenticated endpoint
+  useEffect(() => {
+    const fetchModels = async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) {
+          console.log("No token found, skipping model fetch");
+          setModels([]);
+          return;
+        }
+
+        const res = await axios.get("http://localhost:8081/v1/getModels", {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        console.log("Fetched user models:", res.data);
+        setModels(res.data || []);
+        setError(null);
+      } catch (err: any) {
+        console.error("Error fetching models:", err);
+        if (err.response?.status === 401) {
+          setError("Unauthorized - please login");
+        } else {
+          setError("Failed to fetch models");
+        }
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchModels();
+  }, []);
+
+  // WebSocket for real-time updates with authentication
   useEffect(() => {
     let socket: WebSocket;
     let reconnectAttempts = 0;
@@ -96,18 +192,25 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
 
     const connectWebSocket = () => {
       try {
-        socket = new WebSocket("ws://localhost:8080/v1/ws");
-        
+        const token = localStorage.getItem("token");
+        if (!token) {
+          console.log("No token found, skipping WebSocket connection");
+          return;
+        }
+
+        // Include JWT token as query parameter
+        const wsUrl = `ws://localhost:8081/v1/ws?token=${encodeURIComponent(token)}`;
+        socket = new WebSocket(wsUrl);
+
         socket.onopen = () => {
-          console.log("WebSocket connected");
+          console.log("WebSocket connected (authenticated)");
           reconnectAttempts = 0;
-          setError(null);
         };
 
         socket.onmessage = (event) => {
           try {
             const updatedModels: Model[] = JSON.parse(event.data);
-            console.log("Received models update:", updatedModels);
+            console.log("Received user-specific models update from WebSocket:", updatedModels);
             setModels(updatedModels);
           } catch (error) {
             console.error("Error parsing WebSocket message:", error);
@@ -122,19 +225,15 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
               console.log(`Reconnecting WebSocket (attempt ${reconnectAttempts})`);
               connectWebSocket();
             }, 1000 * reconnectAttempts);
-          } else {
-            setError("WebSocket connection failed after multiple attempts");
           }
         };
 
         socket.onerror = (error) => {
           console.error("WebSocket error:", error);
-          setError("WebSocket connection error");
         };
 
       } catch (error) {
         console.error("WebSocket connection failed:", error);
-        setError("Failed to create WebSocket connection");
       }
     };
 
@@ -149,14 +248,17 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <ModelContext.Provider
-      value={{ 
-        name, 
-        picture, 
-        folder, 
-        setName, 
-        setPicture, 
-        setFolder, 
-        send, 
+      value={{
+        name,
+        picture,
+        folder,
+        trainingScript,
+        setName,
+        setPicture,
+        setFolder,
+        setTrainingScript,
+        send,
+        deleteModel,
         models,
         loading,
         error

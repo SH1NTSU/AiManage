@@ -3,6 +3,7 @@ package repository
 import ( "context"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"server/internal/models"
@@ -37,7 +38,15 @@ func GetModelsByUserID(ctx context.Context, userID int) ([]map[string]interface{
 		fieldDescriptions := rows.FieldDescriptions()
 		row := make(map[string]interface{})
 		for i, v := range values {
-			row[string(fieldDescriptions[i].Name)] = v
+			fieldName := string(fieldDescriptions[i].Name)
+			row[fieldName] = v
+
+			// Convert picture path from "./uploads/..." to "/uploads/..."
+			if fieldName == "picture" && v != nil {
+				if picturePath, ok := v.(string); ok && picturePath != "" {
+					row[fieldName] = strings.TrimPrefix(picturePath, ".")
+				}
+			}
 		}
 		results = append(results, row)
 	}
@@ -78,7 +87,15 @@ func GetAllModels(ctx context.Context) ([]map[string]interface{}, error) {
 		fieldDescriptions := rows.FieldDescriptions()
 		row := make(map[string]interface{})
 		for i, v := range values {
-			row[string(fieldDescriptions[i].Name)] = v
+			fieldName := string(fieldDescriptions[i].Name)
+			row[fieldName] = v
+
+			// Convert picture path from "./uploads/..." to "/uploads/..."
+			if fieldName == "picture" && v != nil {
+				if picturePath, ok := v.(string); ok && picturePath != "" {
+					row[fieldName] = strings.TrimPrefix(picturePath, ".")
+				}
+			}
 		}
 		results = append(results, row)
 	}
