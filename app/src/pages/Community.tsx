@@ -1,17 +1,88 @@
 import { useState, useEffect } from "react";
-import { Search, Filter, Download, Star, Eye, DollarSign, Cpu } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Search, Filter, Download, Star, Eye, DollarSign, Cpu, ArrowRight } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 const Community = () => {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [priceFilter, setPriceFilter] = useState("all");
   const [sortBy, setSortBy] = useState("popular");
   const [publishedModels, setPublishedModels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+
+// Apply all filters and sorting
+  const getFilteredAndSortedModels = () => {
+    let filtered = [...publishedModels];
+
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(model =>
+        model.name.toLowerCase().includes(query) ||
+        model.description?.toLowerCase().includes(query) ||
+        model.short_description?.toLowerCase().includes(query) ||
+        model.tags?.some((tag: string) => tag.toLowerCase().includes(query)) ||
+        model.publisher_username?.toLowerCase().includes(query)
+      );
+    }
+
+    // Category filter
+    if (selectedCategory !== "all" && selectedCategory !== "all-categories") {
+      filtered = filtered.filter(model => {
+        const modelCategory = model.category?.toLowerCase().replace(" ", "-");
+        return modelCategory === selectedCategory;
+      });
+    }
+
+    // Price filter
+    if (priceFilter === "free") {
+      filtered = filtered.filter(model => model.price === 0);
+    } else if (priceFilter === "paid") {
+      filtered = filtered.filter(model => model.price > 0);
+    }
+
+    // Sorting
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case "popular":
+          // Sort by views + downloads combined
+          return (b.views_count + b.downloads_count) - (a.views_count + a.downloads_count);
+
+        case "recent":
+          // Sort by published date (newest first)
+          return new Date(b.published_at).getTime() - new Date(a.published_at).getTime();
+
+        case "rating":
+          // Sort by rating average (highest first)
+          return (b.rating_average || 0) - (a.rating_average || 0);
+
+        case "downloads":
+          // Sort by download count (most first)
+          return (b.downloads_count || 0) - (a.downloads_count || 0);
+
+        case "price-low":
+          // Sort by price (low to high)
+          return (a.price || 0) - (b.price || 0);
+
+        case "price-high":
+          // Sort by price (high to low)
+          return (b.price || 0) - (a.price || 0);
+
+        default:
+          return 0;
+      }
+    });
+
+    return filtered;
+  };
+
+  const filteredModels = getFilteredAndSortedModels();
 
   useEffect(() => {
     fetchPublishedModels();
@@ -125,6 +196,13 @@ const Community = () => {
         </div>
       </div>
 
+      {/* Results count */}
+      {publishedModels.length > 0 && (
+        <div className="text-sm text-muted-foreground">
+          Showing <span className="font-semibold text-foreground">{filteredModels.length}</span> of <span className="font-semibold text-foreground">{publishedModels.length}</span> models
+        </div>
+      )}
+
       {/* Models Grid */}
       {publishedModels.length === 0 ? (
         <Card className="bg-gradient-card border-border shadow-card">
@@ -141,10 +219,11 @@ const Community = () => {
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {publishedModels.map((model) => (
+          {filteredModels.map((model) => (
             <Card
               key={model.id}
               className="bg-gradient-card border-border hover:border-primary/50 transition-all shadow-card hover:shadow-glow group cursor-pointer"
+              onClick={() => navigate(`/community/${model.id}`)}
             >
               <CardHeader>
                 <div className="flex items-start justify-between">
@@ -242,9 +321,16 @@ const Community = () => {
                 )}
 
                 {/* Action Button */}
-                <Button className="w-full bg-gradient-primary hover:opacity-90" size="sm">
-                  <Download className="w-4 h-4 mr-2" />
-                  {model.price === 0 ? "Download" : `Purchase ${formatPrice(model.price)}`}
+                <Button
+                  className="w-full bg-gradient-primary hover:opacity-90"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(`/community/${model.id}`);
+                  }}
+                >
+                  View Details
+                  <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </CardContent>
             </Card>

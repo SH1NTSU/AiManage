@@ -8,6 +8,63 @@ All colors MUST be HSL.
 
 @layer base {
   :root {
+    /* Light mode - default */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+
+    --primary: 180 80% 45%;
+    --primary-foreground: 0 0% 98%;
+
+    --secondary: 210 100% 55%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 180 80% 45%;
+
+    --radius: 0.75rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-primary: 180 80% 45%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 0 0% 96.1%;
+    --sidebar-accent-foreground: 180 80% 45%;
+    --sidebar-border: 0 0% 89.8%;
+    --sidebar-ring: 180 80% 45%;
+
+    --chart-1: 180 80% 45%;
+    --chart-2: 210 100% 55%;
+    --chart-3: 280 70% 55%;
+    --chart-4: 45 100% 55%;
+    --chart-5: 340 80% 55%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(180, 80%, 45%), hsl(210, 100%, 55%));
+    --gradient-card: linear-gradient(135deg, hsl(0, 0%, 100%), hsl(0, 0%, 98%));
+
+    --shadow-glow: 0 0 30px hsla(180, 80%, 45%, 0.15);
+    --shadow-card: 0 4px 20px hsla(0, 0%, 0%, 0.1);
+
+    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dark {
+    /* Dark mode */
     --background: 0 0% 7%;
     --foreground: 0 0% 98%;
 
@@ -36,8 +93,6 @@ All colors MUST be HSL.
     --input: 0 0% 20%;
     --ring: 180 80% 50%;
 
-    --radius: 0.75rem;
-
     --sidebar-background: 0 0% 8%;
     --sidebar-foreground: 0 0% 90%;
     --sidebar-primary: 180 80% 50%;
@@ -55,11 +110,9 @@ All colors MUST be HSL.
 
     --gradient-primary: linear-gradient(135deg, hsl(180, 80%, 50%), hsl(210, 100%, 60%));
     --gradient-card: linear-gradient(135deg, hsl(0, 0%, 12%), hsl(0, 0%, 10%));
-    
+
     --shadow-glow: 0 0 30px hsla(180, 80%, 50%, 0.15);
     --shadow-card: 0 4px 20px hsla(0, 0%, 0%, 0.3);
-    
-    --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
 }
 
@@ -113,5 +166,44 @@ All colors MUST be HSL.
       opacity: 1;
       transform: translateY(0);
     }
+  }
+
+  /* Disable animations when no-animations class is present */
+  .no-animations *,
+  .no-animations *::before,
+  .no-animations *::after {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+  }
+
+  /* Compact mode - reduce spacing */
+  .compact-mode {
+    --spacing-scale: 0.75;
+  }
+
+  .compact-mode .space-y-6 > * + * {
+    margin-top: 1rem !important;
+  }
+
+  .compact-mode .space-y-4 > * + * {
+    margin-top: 0.75rem !important;
+  }
+
+  .compact-mode .p-6 {
+    padding: 1rem !important;
+  }
+
+  .compact-mode .p-4 {
+    padding: 0.75rem !important;
+  }
+
+  .compact-mode .gap-6 {
+    gap: 1rem !important;
+  }
+
+  .compact-mode .gap-4 {
+    gap: 0.75rem !important;
   }
 }

@@ -67,6 +67,18 @@ func NewRouter() http.Handler {
 			protected.Post("/publish", handlers.PubHandler)
 			protected.Get("/published-models", handlers.GetPublishedModelsHandler)
 			protected.Get("/my-published-models", handlers.GetMyPublishedModelsHandler)
+			protected.Get("/published-models/{id}", handlers.GetPublishedModelByIDHandler)
+			protected.Post("/published-models/{id}/download", handlers.DownloadPublishedModelHandler)
+
+			// Likes
+			protected.Post("/published-models/{id}/like", handlers.LikeModelHandler)
+			protected.Delete("/published-models/{id}/like", handlers.UnlikeModelHandler)
+			protected.Get("/published-models/{id}/likes", handlers.GetModelLikesHandler)
+
+			// Comments
+			protected.Get("/published-models/{id}/comments", handlers.GetModelCommentsHandler)
+			protected.Post("/published-models/{id}/comments", handlers.AddModelCommentHandler)
+			protected.Delete("/comments/{commentId}", handlers.DeleteModelCommentHandler)
 
 			// AI Agent routes
 			if aiAgentHandler != nil {

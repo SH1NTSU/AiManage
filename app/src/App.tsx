@@ -3,9 +3,11 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ThemeProvider } from "@/components/theme-provider";
 import { Layout } from "./components/Layout";
 import Models from "./pages/Models";
 import Community from "./pages/Community";
+import ModelDetail from "./pages/ModelDetail";
 import Statistics from "./pages/Statistics";
 import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
@@ -20,6 +22,7 @@ const queryClient = new QueryClient();
 
 const App = () => (
     <BrowserRouter>
+	<ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
 	<AuthProvider>
 	  <ModelProvider>
 	    <TrainingProvider>
@@ -51,6 +54,15 @@ const App = () => (
 		  />
 
 		  <Route
+		    path="/community/:id"
+		    element={
+		      <ProtectedRoute>
+			<Layout><ModelDetail /></Layout>
+		      </ProtectedRoute>
+		    }
+		  />
+
+		  <Route
 		    path="/statistics"
 		    element={
 		      <ProtectedRoute>
@@ -75,6 +87,7 @@ const App = () => (
 	    </TrainingProvider>
 	  </ModelProvider>
 	  </AuthProvider>
+	  </ThemeProvider>
     </BrowserRouter>
 );
 

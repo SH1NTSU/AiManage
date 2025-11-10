@@ -1,22 +1,177 @@
+import { useState, useContext, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { useTheme } from "next-themes";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { Save, Bell, Shield, Database, Palette } from "lucide-react";
+import { LogOut, Bell, Palette, User, Mail, Monitor, Sun, Moon } from "lucide-react";
+import { AuthContext } from "@/context/authContext";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const Settings = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const authContext = useContext(AuthContext);
+  const { theme, setTheme } = useTheme();
+
+  // Appearance settings
+  const [animations, setAnimations] = useState(() => {
+    const saved = localStorage.getItem("settings_animations");
+    return saved === null ? true : saved === "true";
+  });
+  const [compactMode, setCompactMode] = useState(() => {
+    const saved = localStorage.getItem("settings_compactMode");
+    return saved === "true";
+  });
+
+  // Notification settings
+  const [trainingAlerts, setTrainingAlerts] = useState(() => {
+    const saved = localStorage.getItem("settings_trainingAlerts");
+    return saved === null ? true : saved === "true";
+  });
+  const [downloadNotifications, setDownloadNotifications] = useState(() => {
+    const saved = localStorage.getItem("settings_downloadNotifications");
+    return saved === null ? true : saved === "true";
+  });
+  const [communityUpdates, setCommunityUpdates] = useState(() => {
+    const saved = localStorage.getItem("settings_communityUpdates");
+    return saved === "true";
+  });
+  const [emailNotifications, setEmailNotifications] = useState(() => {
+    const saved = localStorage.getItem("settings_emailNotifications");
+    return saved === "true";
+  });
+
+  // Apply and auto-save animations setting
+  useEffect(() => {
+    if (animations) {
+      document.documentElement.classList.remove("no-animations");
+    } else {
+      document.documentElement.classList.add("no-animations");
+    }
+    localStorage.setItem("settings_animations", animations.toString());
+  }, [animations]);
+
+  // Apply and auto-save compact mode
+  useEffect(() => {
+    if (compactMode) {
+      document.documentElement.classList.add("compact-mode");
+    } else {
+      document.documentElement.classList.remove("compact-mode");
+    }
+    localStorage.setItem("settings_compactMode", compactMode.toString());
+  }, [compactMode]);
+
+  // Auto-save notification settings
+  useEffect(() => {
+    localStorage.setItem("settings_trainingAlerts", trainingAlerts.toString());
+  }, [trainingAlerts]);
+
+  useEffect(() => {
+    localStorage.setItem("settings_downloadNotifications", downloadNotifications.toString());
+  }, [downloadNotifications]);
+
+  useEffect(() => {
+    localStorage.setItem("settings_communityUpdates", communityUpdates.toString());
+  }, [communityUpdates]);
+
+  useEffect(() => {
+    localStorage.setItem("settings_emailNotifications", emailNotifications.toString());
+  }, [emailNotifications]);
+
+  const handleLogout = () => {
+    if (authContext) {
+      authContext.logout();
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out",
+      });
+      navigate("/auth");
+    }
+  };
+
+  const handleThemeChange = (newTheme: string) => {
+    setTheme(newTheme);
+    toast({
+      title: "Theme changed",
+      description: `Theme set to ${newTheme}`,
+    });
+  };
+
   return (
-    <div className="space-y-6 animate-slide-up">
+    <div className="space-y-6 animate-slide-up pb-8">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Settings</h2>
         <p className="text-muted-foreground mt-1">
-          Configure your AI model manager preferences
+          Manage your account preferences and settings
         </p>
       </div>
 
       <div className="grid gap-6">
+        {/* Account Section */}
+        <Card className="bg-gradient-card border-border shadow-card">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <User className="w-5 h-5 text-primary" />
+              <CardTitle>Account</CardTitle>
+            </div>
+            <CardDescription>Manage your account and sessions</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Logout</Label>
+                <p className="text-sm text-muted-foreground">
+                  Sign out of your account on this device
+                </p>
+              </div>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm">
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Logout
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure you want to logout?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      You will need to login again to access your models and community features.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleLogout} className="bg-destructive text-destructive-foreground">
+                      Logout
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Appearance Section */}
         <Card className="bg-gradient-card border-border shadow-card">
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -28,12 +183,36 @@ const Settings = () => {
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label>Dark Mode</Label>
+                <Label>Theme</Label>
                 <p className="text-sm text-muted-foreground">
-                  Enable dark theme for the interface
+                  Select your preferred color theme
                 </p>
               </div>
-              <Switch defaultChecked />
+              <Select value={theme} onValueChange={handleThemeChange}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select theme" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="light">
+                    <div className="flex items-center gap-2">
+                      <Sun className="w-4 h-4" />
+                      <span>Light</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="dark">
+                    <div className="flex items-center gap-2">
+                      <Moon className="w-4 h-4" />
+                      <span>Dark</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="system">
+                    <div className="flex items-center gap-2">
+                      <Monitor className="w-4 h-4" />
+                      <span>System</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <Separator />
             <div className="flex items-center justify-between">
@@ -43,11 +222,28 @@ const Settings = () => {
                   Enable smooth transitions and effects
                 </p>
               </div>
-              <Switch defaultChecked />
+              <Switch
+                checked={animations}
+                onCheckedChange={setAnimations}
+              />
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label>Compact Mode</Label>
+                <p className="text-sm text-muted-foreground">
+                  Display more content with reduced spacing
+                </p>
+              </div>
+              <Switch
+                checked={compactMode}
+                onCheckedChange={setCompactMode}
+              />
             </div>
           </CardContent>
         </Card>
 
+        {/* Notifications Section */}
         <Card className="bg-gradient-card border-border shadow-card">
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -59,116 +255,60 @@ const Settings = () => {
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label>Model Alerts</Label>
+                <Label>Training Alerts</Label>
                 <p className="text-sm text-muted-foreground">
-                  Receive alerts when models fail or respond slowly
+                  Get notified when model training completes or fails
                 </p>
               </div>
-              <Switch defaultChecked />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Usage Reports</Label>
-                <p className="text-sm text-muted-foreground">
-                  Get weekly usage reports via email
-                </p>
-              </div>
-              <Switch />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-card border-border shadow-card">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Database className="w-5 h-5 text-chart-3" />
-              <CardTitle>Storage</CardTitle>
-            </div>
-            <CardDescription>Configure storage paths and limits</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="model-path">Default Model Path</Label>
-              <Input
-                id="model-path"
-                placeholder="D:\AI\Models"
-                defaultValue="D:\AI\Models"
-                className="bg-muted border-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="cache-path">Cache Directory</Label>
-              <Input
-                id="cache-path"
-                placeholder="D:\AI\Cache"
-                defaultValue="D:\AI\Cache"
-                className="bg-muted border-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="max-storage">Max Storage (GB)</Label>
-              <Input
-                id="max-storage"
-                type="number"
-                placeholder="100"
-                defaultValue="100"
-                className="bg-muted border-input"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-card border-border shadow-card">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Shield className="w-5 h-5 text-chart-4" />
-              <CardTitle>Security</CardTitle>
-            </div>
-            <CardDescription>Manage security and access controls</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="api-key">API Key</Label>
-              <Input
-                id="api-key"
-                type="password"
-                placeholder="••••••••••••••••"
-                className="bg-muted border-input"
+              <Switch
+                checked={trainingAlerts}
+                onCheckedChange={setTrainingAlerts}
               />
             </div>
             <Separator />
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label>Two-Factor Authentication</Label>
+                <Label>Download Notifications</Label>
                 <p className="text-sm text-muted-foreground">
-                  Add an extra layer of security
+                  Receive alerts when your published models are downloaded
                 </p>
               </div>
-              <Switch />
+              <Switch
+                checked={downloadNotifications}
+                onCheckedChange={setDownloadNotifications}
+              />
             </div>
             <Separator />
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label>Auto-lock</Label>
+                <Label>Community Updates</Label>
                 <p className="text-sm text-muted-foreground">
-                  Lock after 15 minutes of inactivity
+                  Stay updated with new models and community features
                 </p>
               </div>
-              <Switch defaultChecked />
+              <Switch
+                checked={communityUpdates}
+                onCheckedChange={setCommunityUpdates}
+              />
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5 flex-1">
+                <Label className="flex items-center gap-2">
+                  <Mail className="w-4 h-4" />
+                  Email Notifications
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Receive notification updates via email
+                </p>
+              </div>
+              <Switch
+                checked={emailNotifications}
+                onCheckedChange={setEmailNotifications}
+              />
             </div>
           </CardContent>
         </Card>
-
-        <div className="flex justify-end gap-4">
-          <Button variant="outline" className="border-border">
-            Reset to Defaults
-          </Button>
-          <Button className="bg-gradient-primary hover:opacity-90 shadow-glow">
-            <Save className="w-4 h-4 mr-2" />
-            Save Changes
-          </Button>
-        </div>
       </div>
     </div>
   );

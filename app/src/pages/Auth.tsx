@@ -33,7 +33,7 @@ const Auth = () => {
   };
 
   const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
+      e.preventDefault();
     try {
       await register(email, password, username);
       toast({
@@ -53,7 +53,6 @@ const Auth = () => {
       });
     }
   };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md border-border">

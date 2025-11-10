@@ -270,7 +270,7 @@ const Models = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="folder">Model Folder (multiple files)</Label>
+                <Label htmlFor="folder">Model Folder (.zip format)</Label>
                 <Input
                   id="folder"
                   type="file"

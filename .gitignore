@@ -1,6 +1,6 @@
 # Python virtual environments
 venv/
-venv_cpu/
+server/venv_cpu/
 env/
 ENV/
 .venv/

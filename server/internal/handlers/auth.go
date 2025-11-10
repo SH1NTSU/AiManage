@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -15,9 +16,9 @@ import (
 
 func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 	var rq struct {
+		Username string `json:"username"`
 		Email    string `json:"email"`
 		Password string `json:"password"`
-		Username string `json:"username"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&rq); err != nil {
@@ -84,58 +85,91 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[LOGIN] Attempting login for email: %s", rq.Email)
+
 	// Fetch user by email
 	user, err := repository.GetUserByEmail(r.Context(), rq.Email)
 	if err != nil {
+		log.Printf("[LOGIN ERROR] DB error fetching user: %v", err)
 		http.Error(w, "DB error", http.StatusInternalServerError)
 		return
 	}
 	if user == nil {
+		log.Printf("[LOGIN ERROR] User not found for email: %s", rq.Email)
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
+
+	log.Printf("[LOGIN] User found: %+v", *user)
 
 	// Get password from user map
 	passwordHash, ok := (*user)["password"].(string)
 	if !ok {
+		log.Printf("[LOGIN ERROR] Password field type assertion failed. User data: %+v", *user)
 		http.Error(w, "Invalid user data", http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("[LOGIN] Password hash retrieved, length: %d", len(passwordHash))
+
 	// Compare password
 	if err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(rq.Password)); err != nil {
+		log.Printf("[LOGIN ERROR] Password comparison failed for email: %s, error: %v", rq.Email, err)
 		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	// Get user ID
-	userID, ok := (*user)["id"].(int32)
-	if !ok {
+	log.Printf("[LOGIN] Password verified successfully for email: %s", rq.Email)
+
+	// Get user ID - handle multiple integer types from PostgreSQL
+	var userID int
+	switch v := (*user)["id"].(type) {
+	case int:
+		userID = v
+		log.Printf("[LOGIN] User ID extracted as int: %d", userID)
+	case int32:
+		userID = int(v)
+		log.Printf("[LOGIN] User ID extracted as int32, converted to int: %d", userID)
+	case int64:
+		userID = int(v)
+		log.Printf("[LOGIN] User ID extracted as int64, converted to int: %d", userID)
+	default:
+		log.Printf("[LOGIN ERROR] User ID type assertion failed. Type: %T, Value: %v", (*user)["id"], (*user)["id"])
 		http.Error(w, "Invalid user data", http.StatusInternalServerError)
 		return
 	}
 
 	// Generate JWT token with email and userID
-	token, err := helpers.GenerateJWT(rq.Email, int(userID))
+	log.Printf("[LOGIN] Generating JWT for userID: %d, email: %s", userID, rq.Email)
+	token, err := helpers.GenerateJWT(rq.Email, userID)
 	if err != nil {
+		log.Printf("[LOGIN ERROR] JWT generation failed: %v", err)
 		http.Error(w, "Couldn't generate token", http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("[LOGIN] JWT generated successfully")
+
 	// Generate refresh token
 	refreshToken, err := helpers.GenerateRandomString(64)
 	if err != nil {
+		log.Printf("[LOGIN ERROR] Refresh token generation failed: %v", err)
 		http.Error(w, "Couldn't generate refresh token", http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("[LOGIN] Refresh token generated")
+
 	// Save session to DB
 	expiresAt := time.Now().Add(30 * 24 * time.Hour)
-	_, err = repository.InsertSession(r.Context(), int(userID), rq.Email, refreshToken, expiresAt)
+	sessionID, err := repository.InsertSession(r.Context(), userID, rq.Email, refreshToken, expiresAt)
 	if err != nil {
+		log.Printf("[LOGIN ERROR] Session save failed: %v", err)
 		http.Error(w, "Couldn't save session", http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("[LOGIN] Session saved with ID: %d", sessionID)
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     "refresh_token",
@@ -152,4 +186,6 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 		"token":         token,
 		"refresh_token": refreshToken,
 	})
+
+	log.Printf("[LOGIN] Login successful for email: %s, userID: %d", rq.Email, userID)
 }
