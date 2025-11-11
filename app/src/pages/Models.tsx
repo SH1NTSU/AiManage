@@ -1,5 +1,5 @@
 import { useContext, useState, useEffect } from "react";
-import { Plus, Cpu, HardDrive, Network, Trash2, Play, Upload, Store, Star, Download } from "lucide-react";
+import { Plus, Cpu, HardDrive, Network, Trash2, Play, Upload, Store, Star, Download, FolderOpen, Cloud, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -14,8 +14,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ModelContext } from "@/context/modelContext";
 import { TrainingContext } from "@/context/trainingContext";
+import { SubscriptionContext } from "@/context/subscriptionContext";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 
@@ -27,6 +30,8 @@ const Models = () => {
   const [modelToPublish, setModelToPublish] = useState<any>(null);
   const [trainingModel, setTrainingModel] = useState<number | null>(null);
   const [myPublishedModels, setMyPublishedModels] = useState<any[]>([]);
+  const [trainingMode, setTrainingMode] = useState<"local" | "server">("local");
+  const [localModelPath, setLocalModelPath] = useState("");
 
   // Publish form state
   const [publishForm, setPublishForm] = useState({
@@ -46,6 +51,7 @@ const Models = () => {
   } = useContext(ModelContext)!;
 
   const trainingContext = useContext(TrainingContext);
+  const subscriptionContext = useContext(SubscriptionContext);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -241,15 +247,94 @@ const Models = () => {
             </Button>
           </DialogTrigger>
 
-          <DialogContent className="bg-card border-border">
+          <DialogContent className="bg-card border-border max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="text-2xl">Add new Model</DialogTitle>
               <DialogDescription>
-                Configure a new AI model for your system
+                Configure a new AI model for training
               </DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-4">
+              {/* Training Mode Selection */}
+              <div className="space-y-3">
+                <Label>Training Location</Label>
+                <RadioGroup value={trainingMode} onValueChange={(value) => setTrainingMode(value as "local" | "server")}>
+                  <div className="flex items-start space-x-2 p-3 rounded-lg border border-border hover:border-primary/50 transition-colors">
+                    <RadioGroupItem value="local" id="local" />
+                    <div className="flex-1">
+                      <Label htmlFor="local" className="flex items-center gap-2 cursor-pointer">
+                        <FolderOpen className="w-4 h-4" />
+                        <span className="font-semibold">Train on My Machine</span>
+                        <Badge variant="secondary" className="ml-auto">Free</Badge>
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Use your own hardware. Requires training agent to be running.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start space-x-2 p-3 rounded-lg border border-border hover:border-primary/50 transition-colors">
+                    <RadioGroupItem
+                      value="server"
+                      id="server"
+                      disabled={!subscriptionContext?.canTrainOnServer}
+                    />
+                    <div className="flex-1">
+                      <Label htmlFor="server" className={`flex items-center gap-2 ${subscriptionContext?.canTrainOnServer ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
+                        <Cloud className="w-4 h-4" />
+                        <span className="font-semibold">Train on Server</span>
+                        <Badge className="ml-auto bg-gradient-to-r from-blue-500 to-purple-500">Paid</Badge>
+                      </Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Upload to our servers. Powerful GPUs, no setup required.
+                      </p>
+                    </div>
+                  </div>
+                </RadioGroup>
+
+                {/* Upgrade prompt for free users trying to use server */}
+                {!subscriptionContext?.canTrainOnServer && trainingMode === "server" && (
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription className="text-sm">
+                      Server training requires a paid subscription.{" "}
+                      <Button
+                        variant="link"
+                        className="p-0 h-auto font-semibold text-primary"
+                        onClick={() => navigate("/pricing")}
+                      >
+                        View Plans
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {/* Agent connection status for local training */}
+                {trainingMode === "local" && (
+                  <Alert className={subscriptionContext?.isAgentConnected ? "border-green-500" : "border-yellow-500"}>
+                    <AlertCircle className={`h-4 w-4 ${subscriptionContext?.isAgentConnected ? 'text-green-500' : 'text-yellow-500'}`} />
+                    <AlertDescription className="text-sm">
+                      {subscriptionContext?.isAgentConnected ? (
+                        <span className="text-green-600 dark:text-green-400">Agent connected and ready!</span>
+                      ) : (
+                        <>
+                          Agent not connected.{" "}
+                          <Button
+                            variant="link"
+                            className="p-0 h-auto font-semibold"
+                            onClick={() => navigate("/settings")}
+                          >
+                            Set up agent
+                          </Button>
+                        </>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </div>
+
+              {/* Model Name - Always shown */}
               <div className="space-y-2">
                 <Label htmlFor="name">Model Name</Label>
                 <Input
@@ -260,6 +345,7 @@ const Models = () => {
                 />
               </div>
 
+              {/* Profile Image - Always shown */}
               <div className="space-y-2">
                 <Label htmlFor="picture">Profile Image</Label>
                 <Input
@@ -269,36 +355,85 @@ const Models = () => {
                 />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="folder">Model Folder (.zip format)</Label>
-                <Input
-                  id="folder"
-                  type="file"
-                  multiple
-                  onChange={(e) => setFolder(e.target.files ? Array.from(e.target.files) : null)}
-                />
-              </div>
+              {/* Local Training Fields */}
+              {trainingMode === "local" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="localPath">Local Model Path</Label>
+                    <Input
+                      id="localPath"
+                      value={localModelPath}
+                      onChange={(e) => setLocalModelPath(e.target.value)}
+                      placeholder="/home/user/my-models/my-model"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Absolute path to your model folder on your machine
+                    </p>
+                  </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="trainingScript">Training Script Path</Label>
-                <Input
-                  id="trainingScript"
-                  value={trainingScript}
-                  onChange={(e) => setTrainingScript(e.target.value)}
-                  placeholder="e.g., train.py or PokemonModel/train.py"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Path to the training script relative to the model folder
-                </p>
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="trainingScript">Training Script Path</Label>
+                    <Input
+                      id="trainingScript"
+                      value={trainingScript}
+                      onChange={(e) => setTrainingScript(e.target.value)}
+                      placeholder="e.g., train.py or scripts/train.py"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Path to training script relative to the model folder
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {/* Server Training Fields */}
+              {trainingMode === "server" && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="folder">Model Files (.zip or multiple files)</Label>
+                    <Input
+                      id="folder"
+                      type="file"
+                      multiple
+                      onChange={(e) => setFolder(e.target.files ? Array.from(e.target.files) : null)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Upload your model files to our server
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="trainingScript">Training Script Path</Label>
+                    <Input
+                      id="trainingScript"
+                      value={trainingScript}
+                      onChange={(e) => setTrainingScript(e.target.value)}
+                      placeholder="e.g., train.py or PokemonModel/train.py"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Path to training script relative to uploaded files
+                    </p>
+                  </div>
+
+                  {subscriptionContext?.subscription && (
+                    <Alert>
+                      <AlertDescription className="text-sm">
+                        <span className="font-semibold">
+                          {subscriptionContext.subscription.training_credits} training credits
+                        </span> remaining this month
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </>
+              )}
             </div>
 
             <Button
               className="w-full bg-gradient-primary hover:opacity-90"
               onClick={handleSubmit}
-              disabled={loading}
+              disabled={loading || (trainingMode === "server" && !subscriptionContext?.canTrainOnServer)}
             >
-              {loading ? "Uploading..." : "Submit"}
+              {loading ? "Processing..." : trainingMode === "local" ? "Add Local Model" : "Upload & Add Model"}
             </Button>
           </DialogContent>
         </Dialog>

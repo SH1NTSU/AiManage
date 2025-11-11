@@ -219,7 +219,7 @@ func GetUserByEmail(ctx context.Context, email string) (*map[string]interface{},
 		return nil, fmt.Errorf("database connection not initialized")
 	}
 
-	query := `SELECT id, email, password, username, created_at, updated_at FROM users WHERE email = $1`
+	query := `SELECT id, email, password, username, api_key, created_at, updated_at FROM users WHERE email = $1`
 
 	log.Printf("[DB] GetUserByEmail - Querying for email: %s", email)
 	log.Printf("[DB] Query: %s", query)
@@ -846,6 +846,56 @@ func GetPublishedModelsByPublisher(ctx context.Context, publisherID int) ([]map[
 }
 
 // GetUserByUsername retrieves a user by username
+func GetUserByApiKey(ctx context.Context, apiKey string) (*map[string]interface{}, error) {
+	if models.Pool == nil {
+		return nil, fmt.Errorf("database connection not initialized")
+	}
+
+	query := `SELECT id, email, username, api_key, subscription_tier, subscription_status, training_credits FROM users WHERE api_key = $1`
+
+	log.Printf("[DB] GetUserByApiKey - Querying for API key")
+
+	rows, err := models.Pool.Query(ctx, query, apiKey)
+	if err != nil {
+		log.Printf("[DB ERROR] Query failed for API key: %v", err)
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		log.Printf("[DB] No user found with provided API key")
+		return nil, nil
+	}
+
+	var user map[string]interface{} = make(map[string]interface{})
+	var id int
+	var email, username, apiKeyDb string
+	var subscriptionTier, subscriptionStatus *string
+	var trainingCredits *int
+
+	if err := rows.Scan(&id, &email, &username, &apiKeyDb, &subscriptionTier, &subscriptionStatus, &trainingCredits); err != nil {
+		log.Printf("[DB ERROR] Failed to scan row: %v", err)
+		return nil, fmt.Errorf("failed to scan row: %w", err)
+	}
+
+	user["id"] = id
+	user["email"] = email
+	user["username"] = username
+	user["api_key"] = apiKeyDb
+	if subscriptionTier != nil {
+		user["subscription_tier"] = *subscriptionTier
+	}
+	if subscriptionStatus != nil {
+		user["subscription_status"] = *subscriptionStatus
+	}
+	if trainingCredits != nil {
+		user["training_credits"] = *trainingCredits
+	}
+
+	log.Printf("[DB] User found with API key: %s", email)
+	return &user, nil
+}
+
 func GetUserByUsername(ctx context.Context, username string) (*map[string]interface{}, error) {
 	if models.Pool == nil {
 		return nil, fmt.Errorf("database connection not initialized")

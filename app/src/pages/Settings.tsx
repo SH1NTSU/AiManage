@@ -1,14 +1,22 @@
 import { useState, useContext, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "next-themes";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { LogOut, Bell, Palette, User, Mail, Monitor, Sun, Moon } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  LogOut, Bell, Palette, User, CreditCard, Key, Activity,
+  Monitor, Sun, Moon, Check, Copy, Download, Zap, Crown, Sparkles
+} from "lucide-react";
 import { AuthContext } from "@/context/authContext";
+import { SubscriptionContext } from "@/context/subscriptionContext";
 import { useToast } from "@/hooks/use-toast";
+import axios from "axios";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,16 +40,19 @@ const Settings = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const authContext = useContext(AuthContext);
+  const subscriptionContext = useContext(SubscriptionContext);
   const { theme, setTheme } = useTheme();
+
+  const [activeTab, setActiveTab] = useState("account");
+  const [apiKey, setApiKey] = useState("");
+  const [mockPaymentProcessing, setMockPaymentProcessing] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
+  const [username, setUsername] = useState("");
 
   // Appearance settings
   const [animations, setAnimations] = useState(() => {
     const saved = localStorage.getItem("settings_animations");
     return saved === null ? true : saved === "true";
-  });
-  const [compactMode, setCompactMode] = useState(() => {
-    const saved = localStorage.getItem("settings_compactMode");
-    return saved === "true";
   });
 
   // Notification settings
@@ -49,20 +60,7 @@ const Settings = () => {
     const saved = localStorage.getItem("settings_trainingAlerts");
     return saved === null ? true : saved === "true";
   });
-  const [downloadNotifications, setDownloadNotifications] = useState(() => {
-    const saved = localStorage.getItem("settings_downloadNotifications");
-    return saved === null ? true : saved === "true";
-  });
-  const [communityUpdates, setCommunityUpdates] = useState(() => {
-    const saved = localStorage.getItem("settings_communityUpdates");
-    return saved === "true";
-  });
-  const [emailNotifications, setEmailNotifications] = useState(() => {
-    const saved = localStorage.getItem("settings_emailNotifications");
-    return saved === "true";
-  });
 
-  // Apply and auto-save animations setting
   useEffect(() => {
     if (animations) {
       document.documentElement.classList.remove("no-animations");
@@ -72,32 +70,35 @@ const Settings = () => {
     localStorage.setItem("settings_animations", animations.toString());
   }, [animations]);
 
-  // Apply and auto-save compact mode
-  useEffect(() => {
-    if (compactMode) {
-      document.documentElement.classList.add("compact-mode");
-    } else {
-      document.documentElement.classList.remove("compact-mode");
-    }
-    localStorage.setItem("settings_compactMode", compactMode.toString());
-  }, [compactMode]);
-
-  // Auto-save notification settings
   useEffect(() => {
     localStorage.setItem("settings_trainingAlerts", trainingAlerts.toString());
   }, [trainingAlerts]);
 
+  // Fetch user info and API key
   useEffect(() => {
-    localStorage.setItem("settings_downloadNotifications", downloadNotifications.toString());
-  }, [downloadNotifications]);
+    const fetchUserInfo = async () => {
+      try {
+        const token = localStorage.getItem("token");
+        if (!token) return;
 
-  useEffect(() => {
-    localStorage.setItem("settings_communityUpdates", communityUpdates.toString());
-  }, [communityUpdates]);
+        const response = await axios.get("http://localhost:8081/v1/me", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
-  useEffect(() => {
-    localStorage.setItem("settings_emailNotifications", emailNotifications.toString());
-  }, [emailNotifications]);
+        if (response.data) {
+          setUserEmail(response.data.email || "");
+          setUsername(response.data.username || "");
+          setApiKey(response.data.api_key || "");
+        }
+      } catch (error) {
+        console.error("Failed to fetch user info:", error);
+      }
+    };
+
+    fetchUserInfo();
+  }, []);
 
   const handleLogout = () => {
     if (authContext) {
@@ -110,12 +111,90 @@ const Settings = () => {
     }
   };
 
-  const handleThemeChange = (newTheme: string) => {
-    setTheme(newTheme);
+  const copyApiKey = () => {
+    navigator.clipboard.writeText(apiKey);
     toast({
-      title: "Theme changed",
-      description: `Theme set to ${newTheme}`,
+      title: "Copied!",
+      description: "API key copied to clipboard",
     });
+  };
+
+  const regenerateApiKey = async () => {
+    // TODO: Implement backend endpoint to regenerate API key
+    toast({
+      title: "Coming Soon",
+      description: "API key regeneration will be available soon",
+    });
+
+    // When implemented:
+    // const token = localStorage.getItem("token");
+    // const response = await axios.post("http://localhost:8081/v1/regenerate-api-key", {}, {
+    //   headers: { Authorization: `Bearer ${token}` }
+    // });
+    // setApiKey(response.data.api_key);
+  };
+
+  const downloadAgent = () => {
+    toast({
+      title: "Download Started",
+      description: "Training agent package is downloading...",
+    });
+
+    // Create a temporary link and trigger download
+    const link = document.createElement('a');
+    link.href = "http://localhost:8081/uploads/training-agent.zip";
+    link.setAttribute('download', 'training-agent.zip');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleMockUpgrade = async (tier: string) => {
+    setMockPaymentProcessing(true);
+
+    // Mock Stripe payment flow
+    toast({
+      title: "Processing Payment...",
+      description: "Redirecting to checkout",
+    });
+
+    // Simulate payment delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    // Mock successful payment
+    toast({
+      title: "Payment Successful! 🎉",
+      description: `You've been upgraded to ${tier} tier`,
+    });
+
+    setMockPaymentProcessing(false);
+
+    // Refresh subscription
+    if (subscriptionContext) {
+      await subscriptionContext.refreshSubscription();
+    }
+
+    // Navigate to pricing for actual checkout
+    // navigate("/pricing");
+  };
+
+  const getTierBadge = (tier: string) => {
+    const badges: Record<string, { icon: any; color: string }> = {
+      free: { icon: null, color: "bg-gray-500" },
+      basic: { icon: Zap, color: "bg-blue-500" },
+      pro: { icon: Crown, color: "bg-purple-500" },
+      enterprise: { icon: Sparkles, color: "bg-gradient-to-r from-yellow-500 to-orange-500" },
+    };
+
+    const badge = badges[tier] || badges.free;
+    const Icon = badge.icon;
+
+    return (
+      <Badge className={`${badge.color} text-white`}>
+        {Icon && <Icon className="w-3 h-3 mr-1" />}
+        {tier.toUpperCase()}
+      </Badge>
+    );
   };
 
   return (
@@ -123,31 +202,81 @@ const Settings = () => {
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Settings</h2>
         <p className="text-muted-foreground mt-1">
-          Manage your account preferences and settings
+          Manage your account, subscription, and preferences
         </p>
       </div>
 
-      <div className="grid gap-6">
-        {/* Account Section */}
-        <Card className="bg-gradient-card border-border shadow-card">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <User className="w-5 h-5 text-primary" />
-              <CardTitle>Account</CardTitle>
-            </div>
-            <CardDescription>Manage your account and sessions</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Logout</Label>
-                <p className="text-sm text-muted-foreground">
-                  Sign out of your account on this device
-                </p>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="account">
+            <User className="w-4 h-4 mr-2" />
+            Account
+          </TabsTrigger>
+          <TabsTrigger value="subscription">
+            <CreditCard className="w-4 h-4 mr-2" />
+            Subscription
+          </TabsTrigger>
+          <TabsTrigger value="agent">
+            <Activity className="w-4 h-4 mr-2" />
+            Agent
+          </TabsTrigger>
+          <TabsTrigger value="appearance">
+            <Palette className="w-4 h-4 mr-2" />
+            Appearance
+          </TabsTrigger>
+          <TabsTrigger value="notifications">
+            <Bell className="w-4 h-4 mr-2" />
+            Notifications
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Account Tab */}
+        <TabsContent value="account" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Account Information</CardTitle>
+              <CardDescription>Your account details and authentication</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Email</Label>
+                <Input value={userEmail} disabled className="mt-1.5" />
               </div>
+              <div>
+                <Label>Username</Label>
+                <Input value={username} disabled className="mt-1.5" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>API Keys</CardTitle>
+              <CardDescription>Use this key to connect your training agent</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-2">
+                <Input value={apiKey} readOnly />
+                <Button variant="outline" size="icon" onClick={copyApiKey}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+              <Button variant="outline" onClick={regenerateApiKey}>
+                <Key className="w-4 h-4 mr-2" />
+                Regenerate API Key
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Danger Zone</CardTitle>
+              <CardDescription>Irreversible account actions</CardDescription>
+            </CardHeader>
+            <CardContent>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive" size="sm">
+                  <Button variant="destructive">
                     <LogOut className="w-4 h-4 mr-2" />
                     Logout
                   </Button>
@@ -156,7 +285,7 @@ const Settings = () => {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Are you sure you want to logout?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      You will need to login again to access your models and community features.
+                      You will need to login again to access your models.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -167,149 +296,293 @@ const Settings = () => {
                   </AlertDialogFooter>
                 </AlertDialogContent>
               </AlertDialog>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        {/* Appearance Section */}
-        <Card className="bg-gradient-card border-border shadow-card">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Palette className="w-5 h-5 text-primary" />
+        {/* Subscription Tab */}
+        <TabsContent value="subscription" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Current Plan</CardTitle>
+              <CardDescription>Manage your subscription and billing</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="text-lg font-semibold">
+                      {subscriptionContext?.subscription?.tier?.toUpperCase() || "FREE"} Plan
+                    </h3>
+                    {subscriptionContext?.subscription && getTierBadge(subscriptionContext.subscription.tier)}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {subscriptionContext?.subscription?.tier === "free"
+                      ? "Train on your own machine"
+                      : `${subscriptionContext?.subscription?.training_credits} training credits remaining`}
+                  </p>
+                </div>
+                {subscriptionContext?.subscription?.tier !== "free" && (
+                  <Button variant="outline" size="sm">
+                    Manage Billing
+                  </Button>
+                )}
+              </div>
+
+              {subscriptionContext?.subscription?.tier === "free" && (
+                <div className="bg-muted p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2">🎉 Free Forever</h4>
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Train unlimited models on your own machine. Upgrade for server training with powerful GPUs.
+                  </p>
+                  <Button onClick={() => navigate("/pricing")}>
+                    View Plans
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Mock Upgrade Options */}
+          {subscriptionContext?.subscription?.tier === "free" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Upgrade Your Plan</CardTitle>
+                <CardDescription>Get access to server training and more features</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid md:grid-cols-3 gap-4">
+                  <Card>
+                    <CardHeader>
+                      <Badge className="w-fit bg-blue-500">Basic</Badge>
+                      <CardTitle className="text-2xl">$9.99/mo</CardTitle>
+                      <CardDescription>10 server trainings/month</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2 text-sm">
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-green-600" />
+                          Shared GPU access
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-green-600" />
+                          Priority queue
+                        </li>
+                      </ul>
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        className="w-full"
+                        onClick={() => handleMockUpgrade("basic")}
+                        disabled={mockPaymentProcessing}
+                      >
+                        {mockPaymentProcessing ? "Processing..." : "Upgrade to Basic"}
+                      </Button>
+                    </CardFooter>
+                  </Card>
+
+                  <Card className="border-primary">
+                    <CardHeader>
+                      <Badge className="w-fit bg-purple-500">Pro</Badge>
+                      <CardTitle className="text-2xl">$29.99/mo</CardTitle>
+                      <CardDescription>50 server trainings/month</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2 text-sm">
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-green-600" />
+                          Dedicated V100 GPU
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-green-600" />
+                          API access
+                        </li>
+                      </ul>
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        className="w-full"
+                        onClick={() => handleMockUpgrade("pro")}
+                        disabled={mockPaymentProcessing}
+                      >
+                        {mockPaymentProcessing ? "Processing..." : "Upgrade to Pro"}
+                      </Button>
+                    </CardFooter>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <Badge className="w-fit bg-gradient-to-r from-yellow-500 to-orange-500">Enterprise</Badge>
+                      <CardTitle className="text-2xl">$99.99/mo</CardTitle>
+                      <CardDescription>Unlimited training</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ul className="space-y-2 text-sm">
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-green-600" />
+                          Dedicated A100 GPU
+                        </li>
+                        <li className="flex items-center gap-2">
+                          <Check className="h-4 w-4 text-green-600" />
+                          24/7 support
+                        </li>
+                      </ul>
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        className="w-full"
+                        onClick={() => handleMockUpgrade("enterprise")}
+                        disabled={mockPaymentProcessing}
+                      >
+                        {mockPaymentProcessing ? "Processing..." : "Upgrade to Enterprise"}
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* Agent Tab */}
+        <TabsContent value="agent" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Training Agent</CardTitle>
+              <CardDescription>Connect your computer to train models using your own resources</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 border rounded-lg">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className={`w-2 h-2 rounded-full ${subscriptionContext?.isAgentConnected ? 'bg-green-500' : 'bg-gray-400'}`} />
+                    <h4 className="font-semibold">Agent Status</h4>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {subscriptionContext?.isAgentConnected ? "Connected and ready" : "Not connected"}
+                  </p>
+                </div>
+                <Badge variant={subscriptionContext?.isAgentConnected ? "default" : "secondary"}>
+                  {subscriptionContext?.agentStatus}
+                </Badge>
+              </div>
+
+              {!subscriptionContext?.isAgentConnected && (
+                <div className="bg-muted p-4 rounded-lg space-y-3">
+                  <h4 className="font-semibold">Get Started with Agent Training</h4>
+                  <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
+                    <li>Download the training agent</li>
+                    <li>Run it with your API key</li>
+                    <li>Start training from the web interface</li>
+                  </ol>
+                  <Button onClick={downloadAgent} className="w-full">
+                    <Download className="w-4 h-4 mr-2" />
+                    Download Training Agent
+                  </Button>
+                </div>
+              )}
+
+              <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
+                <h4 className="font-semibold text-sm mb-2">💡 How it works</h4>
+                <p className="text-xs text-muted-foreground">
+                  The training agent runs on your computer and connects to our platform.
+                  You manage everything from this web interface, but training happens on your machine using your resources.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Agent Setup Instructions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 text-sm font-mono bg-muted p-4 rounded-lg">
+                <p># 1. Install dependencies</p>
+                <p>pip install websockets torch</p>
+                <p className="mt-2"># 2. Run the agent</p>
+                <p>python train_agent.py --api-key {apiKey}</p>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Appearance Tab */}
+        <TabsContent value="appearance" className="space-y-4">
+          <Card>
+            <CardHeader>
               <CardTitle>Appearance</CardTitle>
-            </div>
-            <CardDescription>Customize the look and feel of your application</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Theme</Label>
-                <p className="text-sm text-muted-foreground">
-                  Select your preferred color theme
-                </p>
+              <CardDescription>Customize the look and feel</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Theme</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Select your preferred color theme
+                  </p>
+                </div>
+                <Select value={theme} onValueChange={setTheme}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="light">
+                      <div className="flex items-center gap-2">
+                        <Sun className="w-4 h-4" />
+                        Light
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="dark">
+                      <div className="flex items-center gap-2">
+                        <Moon className="w-4 h-4" />
+                        Dark
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="system">
+                      <div className="flex items-center gap-2">
+                        <Monitor className="w-4 h-4" />
+                        System
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <Select value={theme} onValueChange={handleThemeChange}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Select theme" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="light">
-                    <div className="flex items-center gap-2">
-                      <Sun className="w-4 h-4" />
-                      <span>Light</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="dark">
-                    <div className="flex items-center gap-2">
-                      <Moon className="w-4 h-4" />
-                      <span>Dark</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="system">
-                    <div className="flex items-center gap-2">
-                      <Monitor className="w-4 h-4" />
-                      <span>System</span>
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Animations</Label>
-                <p className="text-sm text-muted-foreground">
-                  Enable smooth transitions and effects
-                </p>
+              <Separator />
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Animations</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Enable smooth transitions
+                  </p>
+                </div>
+                <Switch checked={animations} onCheckedChange={setAnimations} />
               </div>
-              <Switch
-                checked={animations}
-                onCheckedChange={setAnimations}
-              />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Compact Mode</Label>
-                <p className="text-sm text-muted-foreground">
-                  Display more content with reduced spacing
-                </p>
-              </div>
-              <Switch
-                checked={compactMode}
-                onCheckedChange={setCompactMode}
-              />
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        {/* Notifications Section */}
-        <Card className="bg-gradient-card border-border shadow-card">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Bell className="w-5 h-5 text-secondary" />
+        {/* Notifications Tab */}
+        <TabsContent value="notifications" className="space-y-4">
+          <Card>
+            <CardHeader>
               <CardTitle>Notifications</CardTitle>
-            </div>
-            <CardDescription>Manage your notification preferences</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Training Alerts</Label>
-                <p className="text-sm text-muted-foreground">
-                  Get notified when model training completes or fails
-                </p>
+              <CardDescription>Manage your notification preferences</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Training Alerts</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Get notified when training completes
+                  </p>
+                </div>
+                <Switch checked={trainingAlerts} onCheckedChange={setTrainingAlerts} />
               </div>
-              <Switch
-                checked={trainingAlerts}
-                onCheckedChange={setTrainingAlerts}
-              />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Download Notifications</Label>
-                <p className="text-sm text-muted-foreground">
-                  Receive alerts when your published models are downloaded
-                </p>
-              </div>
-              <Switch
-                checked={downloadNotifications}
-                onCheckedChange={setDownloadNotifications}
-              />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <Label>Community Updates</Label>
-                <p className="text-sm text-muted-foreground">
-                  Stay updated with new models and community features
-                </p>
-              </div>
-              <Switch
-                checked={communityUpdates}
-                onCheckedChange={setCommunityUpdates}
-              />
-            </div>
-            <Separator />
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5 flex-1">
-                <Label className="flex items-center gap-2">
-                  <Mail className="w-4 h-4" />
-                  Email Notifications
-                </Label>
-                <p className="text-sm text-muted-foreground">
-                  Receive notification updates via email
-                </p>
-              </div>
-              <Switch
-                checked={emailNotifications}
-                onCheckedChange={setEmailNotifications}
-              />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

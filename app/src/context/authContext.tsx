@@ -8,6 +8,9 @@ interface AuthContextType {
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, username: string) => Promise<void>;
+  loginWithGoogle: (code: string) => Promise<void>;
+  loginWithGitHub: (code: string) => Promise<void>;
+  loginWithApple: (code: string, idToken?: string) => Promise<void>;
   logout: () => void;
   loading: boolean;
   error: string | null;
@@ -92,6 +95,51 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     finally { setLoading(false); }
   };
 
+  const loginWithGoogle = async (code: string) => {
+    setLoading(true); setError(null);
+    try {
+      const res = await axios.post("http://localhost:8081/v1/auth/google", { code });
+      setToken(res.data.token);
+      localStorage.setItem("token", res.data.token);
+      navigate("/");
+    } catch (err: any) {
+      setError(err.response?.data || "Google login failed");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loginWithGitHub = async (code: string) => {
+    setLoading(true); setError(null);
+    try {
+      const res = await axios.post("http://localhost:8081/v1/auth/github", { code });
+      setToken(res.data.token);
+      localStorage.setItem("token", res.data.token);
+      navigate("/");
+    } catch (err: any) {
+      setError(err.response?.data || "GitHub login failed");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loginWithApple = async (code: string, idToken?: string) => {
+    setLoading(true); setError(null);
+    try {
+      const res = await axios.post("http://localhost:8081/v1/auth/apple", { code, id_token: idToken });
+      setToken(res.data.token);
+      localStorage.setItem("token", res.data.token);
+      navigate("/");
+    } catch (err: any) {
+      setError(err.response?.data || "Apple login failed");
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = () => { setToken(null); localStorage.removeItem("token"); };
 
   // Proactive refresh
@@ -108,7 +156,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [token]);
 
   return (
-    <AuthContext.Provider value={{ token, login, register, logout, loading, error }}>
+    <AuthContext.Provider value={{ token, login, register, loginWithGoogle, loginWithGitHub, loginWithApple, logout, loading, error }}>
       {children}
     </AuthContext.Provider>
   );

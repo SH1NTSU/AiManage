@@ -39,6 +39,7 @@ func GetCurrentUserHandler(w http.ResponseWriter, r *http.Request) {
 		"id":       (*user)["id"],
 		"email":    (*user)["email"],
 		"username": (*user)["username"],
+		"api_key":  (*user)["api_key"],
 	}
 
 	log.Printf("✅ Retrieved user info for: %s", email)

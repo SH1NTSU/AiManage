@@ -47,10 +47,16 @@ func NewRouter() http.Handler {
 
 		r.HandleFunc("/ws", WsHandler)
 		r.HandleFunc("/ws/training", TrainingWSHandler)
+		r.HandleFunc("/ws/agent", handlers.AgentWebSocketHandler)
 
 		r.Post("/register", handlers.RegisterHandler)
 		r.Post("/login", handlers.LoginHandler)
 		r.Get("/refresh", handlers.RefreshHandler)
+
+		// OAuth routes
+		r.Post("/auth/google", handlers.GoogleOAuthHandler)
+		r.Post("/auth/github", handlers.GitHubOAuthHandler)
+		r.Post("/auth/apple", handlers.AppleOAuthHandler)
 		r.Group(func(protected chi.Router) {
 			protected.Use(middlewares.JWTGuard)
 			protected.Get("/health", handlers.HealthCheckHandler)
@@ -95,7 +101,21 @@ func NewRouter() http.Handler {
 				protected.Post("/train/analyze", trainingHandler.AnalyzeResults)
 				protected.Post("/train/cleanup", trainingHandler.CleanupOldTrainings)
 			}
+
+			// Subscription routes
+			protected.Get("/subscription", handlers.GetSubscriptionHandler)
+			protected.Post("/subscription/checkout", handlers.CreateCheckoutSessionHandler)
+			protected.Get("/pricing", handlers.GetPricingHandler)
+
+			// Agent status
+			protected.Get("/agent/status", handlers.GetAgentStatusHandler)
 		})
+
+		// Public webhook endpoint (no auth required)
+		r.Post("/webhook/stripe", handlers.StripeWebhookHandler)
+
+		// Public pricing endpoint
+		r.Get("/pricing", handlers.GetPricingHandler)
 	})
 	return r
 

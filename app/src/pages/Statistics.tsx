@@ -1,6 +1,6 @@
 import { useContext, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, TrendingUp, Clock, Zap, Play, CheckCircle, AlertCircle, Loader2, Download, RefreshCw } from "lucide-react";
+import { Activity, TrendingUp, Clock, Zap, Play, CheckCircle, AlertCircle, Loader2, Download, RefreshCw, Cloud, FolderOpen } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import { TrainingContext } from "@/context/trainingContext";
 import { ModelContext } from "@/context/modelContext";
+import { SubscriptionContext } from "@/context/subscriptionContext";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SmoothProgressBar } from "@/components/SmoothProgressBar";
@@ -25,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 const Statistics = () => {
   const trainingContext = useContext(TrainingContext);
   const modelContext = useContext(ModelContext);
+  const subscriptionContext = useContext(SubscriptionContext);
   const { toast } = useToast();
   const [isPolling, setIsPolling] = useState(false);
   const [latestTrainingId, setLatestTrainingId] = useState<string | null>(null);
@@ -485,11 +487,26 @@ const Statistics = () => {
 
     return (
       <div className="space-y-6 animate-slide-up">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Training in Progress</h2>
-          <p className="text-muted-foreground mt-1">
-            Monitoring training metrics in real-time
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">Training in Progress</h2>
+            <p className="text-muted-foreground mt-1">
+              Monitoring training metrics in real-time
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {subscriptionContext?.canTrainOnServer ? (
+              <Badge className="bg-gradient-to-r from-blue-500 to-purple-500 text-white">
+                <Cloud className="w-3 h-3 mr-1" />
+                Server Training
+              </Badge>
+            ) : (
+              <Badge variant="secondary">
+                <FolderOpen className="w-3 h-3 mr-1" />
+                Local Training
+              </Badge>
+            )}
+          </div>
         </div>
 
         {/* Progress Card */}
@@ -562,10 +579,32 @@ const Statistics = () => {
         <CardContent className="flex flex-col items-center justify-center py-12">
           <Play className="w-16 h-16 text-muted-foreground mb-4" />
           <h3 className="text-xl font-semibold mb-2">No Training Data</h3>
-          <p className="text-muted-foreground text-center max-w-md">
+          <p className="text-muted-foreground text-center max-w-md mb-4">
             Start training a model from the Models page to see comprehensive performance metrics and insights.
           </p>
-          <Button className="mt-6" onClick={() => window.location.href = '/'}>
+
+          {/* Subscription Tier Info */}
+          <div className="flex items-center gap-2 mb-6">
+            {subscriptionContext?.canTrainOnServer ? (
+              <Badge className="bg-gradient-to-r from-blue-500 to-purple-500 text-white">
+                <Cloud className="w-3 h-3 mr-1" />
+                Server Training Available
+              </Badge>
+            ) : (
+              <Badge variant="secondary">
+                <FolderOpen className="w-3 h-3 mr-1" />
+                Free - Local Training Only
+              </Badge>
+            )}
+            {subscriptionContext?.isAgentConnected && !subscriptionContext?.canTrainOnServer && (
+              <Badge variant="default" className="bg-green-500">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                Agent Connected
+              </Badge>
+            )}
+          </div>
+
+          <Button className="mt-2" onClick={() => window.location.href = '/'}>
             Go to Models
           </Button>
         </CardContent>

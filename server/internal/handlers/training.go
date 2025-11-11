@@ -29,6 +29,20 @@ func (h *TrainingHandler) StartTraining(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Check if user has permission to train on server
+	canTrain, message := CanUserTrainOnServer(r)
+	if !canTrain {
+		println("❌ [TRAINING] Permission denied:", message)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   message,
+			"message": "Consider training locally or upgrading your subscription",
+		})
+		return
+	}
+
 	var req aiAgent.TrainingRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		println("❌ [TRAINING] Failed to decode request:", err.Error())
