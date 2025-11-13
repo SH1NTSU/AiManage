@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useContext } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Check } from "lucide-react";
 import axios from "axios";
 import { useToast } from "@/hooks/use-toast";
+import { SubscriptionContext } from "@/context/subscriptionContext";
 
 interface PricingTier {
   tier: string;
@@ -18,6 +19,7 @@ const Pricing = () => {
   const [loading, setLoading] = useState(true);
   const [currentTier, setCurrentTier] = useState("free");
   const { toast } = useToast();
+  const subscriptionContext = useContext(SubscriptionContext);
 
   useEffect(() => {
     fetchPricing();
@@ -37,7 +39,12 @@ const Pricing = () => {
 
   const fetchCurrentSubscription = async () => {
     try {
-      const response = await axios.get("http://localhost:8081/v1/subscription");
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const response = await axios.get("http://localhost:8081/v1/subscription", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setCurrentTier(response.data.subscription.tier);
     } catch (error) {
       console.error("Failed to fetch subscription:", error);
@@ -54,27 +61,79 @@ const Pricing = () => {
     }
 
     try {
-      const response = await axios.post("http://localhost:8081/v1/subscription/checkout", {
-        tier: tier,
-      });
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to subscribe",
+          variant: "destructive",
+        });
+        return;
+      }
 
       toast({
-        title: "Redirecting to Checkout",
+        title: "Creating checkout session...",
         description: "Please wait...",
       });
 
-      // In production, redirect to Stripe checkout
-      // window.location.href = response.data.checkout_url;
-
-      toast({
-        title: "Coming Soon!",
-        description: "Stripe integration will be available soon. This is a demo.",
-        variant: "default",
+      const response = await axios.post("http://localhost:8081/v1/subscription/checkout", {
+        tier: tier,
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
+
+      if (response.data.checkout_url) {
+        // Check if this is a mock checkout (contains mock_checkout=true)
+        if (response.data.checkout_url.includes('mock_checkout=true')) {
+          // Mock mode - actually upgrade the subscription in the database
+          try {
+            const upgradeResponse = await axios.post("http://localhost:8081/v1/subscription/mock-upgrade", {
+              tier: tier,
+            }, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+
+            if (upgradeResponse.data.success) {
+              toast({
+                title: "Subscription Updated! 🎉",
+                description: `Successfully upgraded to ${tier} tier (Development Mode). Redirecting...`,
+                duration: 3000,
+              });
+
+              // Refresh subscription data
+              if (subscriptionContext) {
+                await subscriptionContext.refreshSubscription();
+              }
+
+              // Redirect to settings after a short delay
+              setTimeout(() => {
+                window.location.href = "/settings";
+              }, 2000);
+            }
+          } catch (upgradeError: any) {
+            console.error("Mock upgrade error:", upgradeError);
+            toast({
+              title: "Upgrade Failed",
+              description: upgradeError.response?.data?.message || "Failed to upgrade subscription",
+              variant: "destructive",
+            });
+          }
+        } else {
+          // Real Stripe checkout - redirect
+          window.location.href = response.data.checkout_url;
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to create checkout session",
+          variant: "destructive",
+        });
+      }
     } catch (error: any) {
+      console.error("Checkout error:", error);
       toast({
         title: "Checkout Failed",
-        description: error.response?.data?.message || "Please try again later.",
+        description: error.response?.data?.message || error.message || "Please try again later.",
         variant: "destructive",
       });
     }

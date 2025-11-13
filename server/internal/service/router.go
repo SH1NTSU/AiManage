@@ -77,6 +77,7 @@ func NewRouter() http.Handler {
 
 			// Community marketplace routes
 			protected.Post("/publish", handlers.PubHandler)
+			protected.Post("/published-models/{id}/unpublish", handlers.UnPublishModel)
 			protected.Get("/published-models", handlers.GetPublishedModelsHandler)
 			protected.Get("/my-published-models", handlers.GetMyPublishedModelsHandler)
 			protected.Get("/published-models/{id}", handlers.GetPublishedModelByIDHandler)
@@ -111,6 +112,7 @@ func NewRouter() http.Handler {
 			// Subscription routes
 			protected.Get("/subscription", handlers.GetSubscriptionHandler)
 			protected.Post("/subscription/checkout", handlers.CreateCheckoutSessionHandler)
+			protected.Post("/subscription/mock-upgrade", handlers.MockUpgradeHandler) // For development/testing only
 			protected.Get("/pricing", handlers.GetPricingHandler)
 
 			// Agent status

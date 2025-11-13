@@ -1,5 +1,5 @@
 import { useContext, useState, useEffect } from "react";
-import { Plus, Cpu, HardDrive, Network, Trash2, Play, Upload, Store, Star, Download, FolderOpen, Cloud, AlertCircle } from "lucide-react";
+import { Plus, Cpu, HardDrive, Network, Trash2, Play, Upload, Store, Star, Download, FolderOpen, Cloud, AlertCircle, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -226,6 +226,54 @@ const Models = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const handleUnpublish = async (publishedModelId: number, modelName: string) => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast({
+          title: "Error",
+          description: "You must be logged in",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const response = await fetch(`http://localhost:8081/v1/published-models/${publishedModelId}/unpublish`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Failed to unpublish model");
+      }
+
+      toast({
+        title: "Model Unpublished",
+        description: `${modelName} has been removed from the community`,
+      });
+
+      // Refresh published models list
+      fetchMyPublishedModels();
+    } catch (error) {
+      console.error("Unpublish error:", error);
+      toast({
+        title: "Unpublish Failed",
+        description: "Failed to unpublish model",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Check if a model is already published
+  const isModelPublished = (modelId: number) => {
+    return myPublishedModels.some(
+      (publishedModel) => publishedModel.model_id === modelId && publishedModel.is_active
+    );
   };
 
   return (
@@ -521,7 +569,7 @@ const Models = () => {
                   <Badge className="bg-primary/20 text-primary border-primary/30">
                     Synced
                   </Badge>
-                  {model.trained_model_path && (
+                  {model.trained_model_path && !isModelPublished(model.id) && (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -610,15 +658,28 @@ const Models = () => {
                           <Cpu className="w-8 h-8 text-primary" />
                         </div>
                       )}
-                      <Badge
-                        className={`${
-                          model.price === 0
-                            ? "bg-green-500/20 text-green-500 border-green-500/30"
-                            : "bg-primary/20 text-primary border-primary/30"
-                        }`}
-                      >
-                        {model.price === 0 ? "Free" : `$${(model.price / 100).toFixed(2)}`}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          className={`${
+                            model.price === 0
+                              ? "bg-green-500/20 text-green-500 border-green-500/30"
+                              : "bg-primary/20 text-primary border-primary/30"
+                          }`}
+                        >
+                          {model.price === 0 ? "Free" : `$${(model.price / 100).toFixed(2)}`}
+                        </Badge>
+                        {model.is_active && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => handleUnpublish(model.id, model.name)}
+                            title="Unpublish Model"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     <CardTitle>{model.name}</CardTitle>
                     <CardDescription className="line-clamp-2">

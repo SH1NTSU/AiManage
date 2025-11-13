@@ -51,11 +51,15 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      const response = await axios.get("http://localhost:8081/v1/subscription");
+      console.log("Fetching subscription from server...");
+      const response = await axios.get("http://localhost:8081/v1/subscription", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      console.log("Subscription API response:", response.data);
       setSubscription(response.data.subscription);
     } catch (error) {
       console.error("Failed to fetch subscription:", error);
-      // Set default free tier
+      // Set default free tier on error
       setSubscription({
         tier: "free",
         status: "active",
@@ -76,7 +80,9 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      const response = await axios.get("http://localhost:8081/v1/agent/status");
+      const response = await axios.get("http://localhost:8081/v1/agent/status", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setIsAgentConnected(response.data.connected);
       setAgentStatus(response.data.status);
       setAgentSystemInfo(response.data.system_info || null);
@@ -90,6 +96,8 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     fetchSubscription();
+
+    // Fetch initial agent status
     fetchAgentStatus();
 
     // Set up WebSocket for real-time agent status updates
@@ -100,6 +108,8 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
 
     ws.onopen = () => {
       console.log("✅ WebSocket connected for agent status");
+      // Fetch agent status again when WebSocket connects to ensure we have the latest state
+      fetchAgentStatus();
     };
 
     ws.onmessage = (event) => {
@@ -124,10 +134,13 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
 
     ws.onclose = () => {
       console.log("WebSocket closed");
+      // When WebSocket closes, poll to check if agent is still connected
+      fetchAgentStatus();
     };
 
-    // Fallback: Poll agent status every 30 seconds as backup
-    const interval = setInterval(fetchAgentStatus, 30000);
+    // Poll agent status every 10 seconds to ensure we catch status changes
+    // even if WebSocket fails or disconnects
+    const interval = setInterval(fetchAgentStatus, 10000);
 
     return () => {
       ws.close();

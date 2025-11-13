@@ -98,6 +98,20 @@ const Settings = () => {
     };
 
     fetchUserInfo();
+
+    // Handle mock checkout success
+    const urlParams = new URLSearchParams(window.location.search);
+    const mockCheckout = urlParams.get('mock_checkout');
+    const tier = urlParams.get('tier');
+
+    if (mockCheckout === 'true' && tier) {
+      toast({
+        title: "Mock Checkout",
+        description: `This is a demo. In production, you would be charged for the ${tier} tier. Stripe integration needed.`,
+      });
+      // Clean up URL
+      window.history.replaceState({}, '', '/settings');
+    }
   }, []);
 
   const handleLogout = () => {
@@ -149,33 +163,94 @@ const Settings = () => {
     document.body.removeChild(link);
   };
 
-  const handleMockUpgrade = async (tier: string) => {
+  const handleUpgrade = async (tier: string) => {
     setMockPaymentProcessing(true);
 
-    // Mock Stripe payment flow
-    toast({
-      title: "Processing Payment...",
-      description: "Redirecting to checkout",
-    });
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to subscribe",
+          variant: "destructive",
+        });
+        setMockPaymentProcessing(false);
+        return;
+      }
 
-    // Simulate payment delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
+      toast({
+        title: "Creating checkout session...",
+        description: "Please wait...",
+      });
 
-    // Mock successful payment
-    toast({
-      title: "Payment Successful! 🎉",
-      description: `You've been upgraded to ${tier} tier`,
-    });
+      const response = await axios.post("http://localhost:8081/v1/subscription/checkout", {
+        tier: tier,
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
 
-    setMockPaymentProcessing(false);
+      console.log("Checkout response:", response.data);
 
-    // Refresh subscription
-    if (subscriptionContext) {
-      await subscriptionContext.refreshSubscription();
+      if (response.data.checkout_url) {
+        // Check if this is a mock checkout (contains mock_checkout=true)
+        if (response.data.checkout_url.includes('mock_checkout=true')) {
+          console.log("Mock mode detected, calling mock-upgrade endpoint...");
+          // Mock mode - actually upgrade the subscription in the database
+          try {
+            const upgradeResponse = await axios.post("http://localhost:8081/v1/subscription/mock-upgrade", {
+              tier: tier,
+            }, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+
+            console.log("Mock upgrade response:", upgradeResponse.data);
+
+            if (upgradeResponse.data.success) {
+              toast({
+                title: "Subscription Updated! 🎉",
+                description: `Successfully upgraded to ${tier} tier (Development Mode). Refreshing subscription...`,
+                duration: 5000,
+              });
+
+              // Refresh subscription data
+              if (subscriptionContext) {
+                console.log("Refreshing subscription context...");
+                await subscriptionContext.refreshSubscription();
+                console.log("Subscription refreshed:", subscriptionContext.subscription);
+              } else {
+                console.error("Subscription context is null!");
+              }
+            }
+          } catch (upgradeError: any) {
+            console.error("Mock upgrade error:", upgradeError);
+            toast({
+              title: "Upgrade Failed",
+              description: upgradeError.response?.data?.message || "Failed to upgrade subscription",
+              variant: "destructive",
+            });
+          }
+          setMockPaymentProcessing(false);
+        } else {
+          // Real Stripe checkout - redirect
+          window.location.href = response.data.checkout_url;
+        }
+      } else {
+        toast({
+          title: "Error",
+          description: response.data.message || "Failed to create checkout session",
+          variant: "destructive",
+        });
+        setMockPaymentProcessing(false);
+      }
+    } catch (error: any) {
+      console.error("Checkout error:", error);
+      toast({
+        title: "Checkout Failed",
+        description: error.response?.data?.message || error.message || "Please try again later.",
+        variant: "destructive",
+      });
+      setMockPaymentProcessing(false);
     }
-
-    // Navigate to pricing for actual checkout
-    // navigate("/pricing");
   };
 
   const getTierBadge = (tier: string) => {
@@ -373,7 +448,7 @@ const Settings = () => {
                     <CardFooter>
                       <Button
                         className="w-full"
-                        onClick={() => handleMockUpgrade("basic")}
+                        onClick={() => handleUpgrade("basic")}
                         disabled={mockPaymentProcessing}
                       >
                         {mockPaymentProcessing ? "Processing..." : "Upgrade to Basic"}
@@ -402,7 +477,7 @@ const Settings = () => {
                     <CardFooter>
                       <Button
                         className="w-full"
-                        onClick={() => handleMockUpgrade("pro")}
+                        onClick={() => handleUpgrade("pro")}
                         disabled={mockPaymentProcessing}
                       >
                         {mockPaymentProcessing ? "Processing..." : "Upgrade to Pro"}
@@ -431,7 +506,7 @@ const Settings = () => {
                     <CardFooter>
                       <Button
                         className="w-full"
-                        onClick={() => handleMockUpgrade("enterprise")}
+                        onClick={() => handleUpgrade("enterprise")}
                         disabled={mockPaymentProcessing}
                       >
                         {mockPaymentProcessing ? "Processing..." : "Upgrade to Enterprise"}

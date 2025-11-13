@@ -8,6 +8,7 @@ import (
 	"server/aiAgent"
 	"server/internal/middlewares"
 	"server/internal/repository"
+	"strings"
 	"time"
 )
 
@@ -138,7 +139,9 @@ func (h *TrainingHandler) StartTraining(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Update the request to use the actual folder path
-	req.FolderName = modelFolder
+	// Strip ./uploads/ prefix if present (trainer will add it back via BaseUploadPath)
+	req.FolderName = strings.TrimPrefix(modelFolder, "./uploads/")
+	req.FolderName = strings.TrimPrefix(req.FolderName, "uploads/")
 	println("📂 [TRAINING] Using folder path:", req.FolderName)
 
 	// Start training

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -10,6 +11,10 @@ import (
 	"server/internal/repository"
 )
 
+type UnPublishModelRequest struct {
+	// Required fields
+	ModelID     int    `json:"model_id"`
+}
 type PublishModelRequest struct {
 	// Required fields
 	ModelID     int    `json:"model_id"`
@@ -213,4 +218,74 @@ func GetMyPublishedModelsHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(publishedModels)
+}
+
+// UnPublishModel unpublishes a published model by setting is_active to false
+func UnPublishModel(w http.ResponseWriter, r *http.Request) {
+	log.Println("🚫 UnPublishModel handler called")
+
+	// Extract published model ID from URL path
+	publishedModelID := r.PathValue("id")
+	if publishedModelID == "" {
+		log.Println("❌ Missing published model ID in URL")
+		http.Error(w, "Published model ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Convert string ID to integer
+	var modelID int
+	if _, err := fmt.Sscanf(publishedModelID, "%d", &modelID); err != nil {
+		log.Printf("❌ Invalid model ID format: %s", publishedModelID)
+		http.Error(w, "Invalid model ID format", http.StatusBadRequest)
+		return
+	}
+
+	// Get authenticated user email from context
+	email, ok := r.Context().Value(middlewares.UserEmailKey).(string)
+	if !ok || email == "" {
+		log.Println("❌ User email not found in request context")
+		http.Error(w, "Unauthorized - authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	// Fetch user from database
+	user, err := repository.GetUserByEmail(r.Context(), email)
+	if err != nil {
+		log.Printf("❌ Failed to fetch user by email %s: %v", email, err)
+		http.Error(w, "Failed to authenticate user", http.StatusInternalServerError)
+		return
+	}
+	if user == nil {
+		log.Printf("❌ No user found with email: %s", email)
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	// Extract user ID from user record
+	userID, ok := (*user)["id"].(int32)
+	if !ok {
+		log.Println("❌ Failed to extract user ID from database record")
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("📋 User %d attempting to unpublish model %d", userID, modelID)
+
+	// Call repository to unpublish the model (includes ownership verification)
+	err = repository.UnpublishModel(r.Context(), modelID, int(userID))
+	if err != nil {
+		log.Printf("❌ Failed to unpublish model %d: %v", modelID, err)
+		http.Error(w, err.Error(), http.StatusForbidden)
+		return
+	}
+
+	log.Printf("✅ Successfully unpublished model %d by user %d", modelID, userID)
+
+	// Return success response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Model unpublished successfully",
+		"model_id": modelID,
+	})
 }

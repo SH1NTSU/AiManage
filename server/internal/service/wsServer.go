@@ -30,6 +30,8 @@ var (
 	listenerStarted  bool
 	stopListener     chan bool
 	listenerMutex    sync.Mutex
+	listenerCtx      context.Context
+	listenerCancel   context.CancelFunc
 )
 
 func WsHandler(w http.ResponseWriter, r *http.Request) {
@@ -140,19 +142,18 @@ func startDatabaseListener() {
 		return
 	}
 	listenerStarted = true
-	stopListener = make(chan bool)
+	listenerCtx, listenerCancel = context.WithCancel(context.Background())
 	listenerMutex.Unlock()
 
 	log.Println("🎧 Starting PostgreSQL LISTEN for models_changes...")
 
-	ctx := context.Background()
-
 	// Acquire a dedicated connection for listening
-	conn, err := models.Pool.Acquire(ctx)
+	conn, err := models.Pool.Acquire(listenerCtx)
 	if err != nil {
 		log.Println("❌ Failed to acquire connection for LISTEN:", err)
 		listenerMutex.Lock()
 		listenerStarted = false
+		listenerCancel()
 		listenerMutex.Unlock()
 		return
 	}
@@ -162,13 +163,14 @@ func startDatabaseListener() {
 	listenerMutex.Unlock()
 
 	// Start listening on the channel
-	_, err = conn.Exec(ctx, "LISTEN models_changes")
+	_, err = conn.Exec(listenerCtx, "LISTEN models_changes")
 	if err != nil {
 		log.Println("❌ Failed to LISTEN:", err)
 		conn.Release()
 		listenerMutex.Lock()
 		listenerStarted = false
 		listenerConn = nil
+		listenerCancel()
 		listenerMutex.Unlock()
 		return
 	}
@@ -176,16 +178,21 @@ func startDatabaseListener() {
 	log.Println("✅ Successfully started LISTEN on models_changes channel")
 
 	// Listen for notifications in a loop
+	defer func() {
+		// Cleanup when exiting the listener
+		conn.Exec(context.Background(), "UNLISTEN models_changes")
+		conn.Release()
+		listenerMutex.Lock()
+		listenerStarted = false
+		listenerConn = nil
+		listenerMutex.Unlock()
+		log.Println("✅ Database listener cleanup complete")
+	}()
+
 	for {
 		select {
-		case <-stopListener:
+		case <-listenerCtx.Done():
 			log.Println("🛑 Stopping database listener...")
-			conn.Exec(ctx, "UNLISTEN models_changes")
-			conn.Release()
-			listenerMutex.Lock()
-			listenerStarted = false
-			listenerConn = nil
-			listenerMutex.Unlock()
 			return
 
 		default:
@@ -199,14 +206,8 @@ func startDatabaseListener() {
 				if ctx.Err() == context.DeadlineExceeded {
 					// Check if we should stop
 					select {
-					case <-stopListener:
+					case <-listenerCtx.Done():
 						log.Println("🛑 Stopping database listener...")
-						conn.Exec(context.Background(), "UNLISTEN models_changes")
-						conn.Release()
-						listenerMutex.Lock()
-						listenerStarted = false
-						listenerConn = nil
-						listenerMutex.Unlock()
 						return
 					default:
 						continue
@@ -228,15 +229,15 @@ func startDatabaseListener() {
 
 func stopDatabaseListener() {
 	listenerMutex.Lock()
+	defer listenerMutex.Unlock()
+
 	if !listenerStarted {
-		listenerMutex.Unlock()
 		return
 	}
-	listenerMutex.Unlock()
 
 	log.Println("Stopping database listener (no clients connected)...")
-	if stopListener != nil {
-		close(stopListener)
+	if listenerCancel != nil {
+		listenerCancel()
 	}
 }
 

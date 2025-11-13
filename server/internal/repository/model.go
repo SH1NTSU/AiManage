@@ -221,7 +221,10 @@ func GetUserByEmail(ctx context.Context, email string) (*map[string]interface{},
 		return nil, fmt.Errorf("database connection not initialized")
 	}
 
-	query := `SELECT id, email, password, username, api_key, created_at, updated_at FROM users WHERE email = $1`
+	query := `SELECT id, email, password, username, api_key, created_at, updated_at,
+		subscription_tier, subscription_status, training_credits,
+		stripe_customer_id, stripe_subscription_id, subscription_start_date, subscription_end_date
+		FROM users WHERE email = $1`
 
 	log.Printf("[DB] GetUserByEmail - Querying for email: %s", email)
 	log.Printf("[DB] Query: %s", query)
@@ -905,6 +908,32 @@ func GetPublishedModelsByPublisher(ctx context.Context, publisherID int) ([]map[
 
 	log.Printf("Retrieved %d published models for publisher %d", len(results), publisherID)
 	return results, nil
+}
+
+// UnpublishModel sets is_active to false for a published model
+func UnpublishModel(ctx context.Context, publishedModelID int, publisherID int) error {
+	if models.Pool == nil {
+		return fmt.Errorf("database connection not initialized")
+	}
+
+	query := `
+		UPDATE published_models
+		SET is_active = false, updated_at = NOW()
+		WHERE id = $1 AND publisher_id = $2
+	`
+
+	result, err := models.Pool.Exec(ctx, query, publishedModelID, publisherID)
+	if err != nil {
+		return fmt.Errorf("failed to unpublish model: %w", err)
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("model not found or you don't have permission to unpublish it")
+	}
+
+	log.Printf("Model %d unpublished by publisher %d", publishedModelID, publisherID)
+	return nil
 }
 
 // GetUserByUsername retrieves a user by username

@@ -1,10 +1,10 @@
 # Python virtual environments
 venv/
 server/venv_cpu/
-env/
+./server/.env
 ENV/
 .venv/
-./app/node_modules/
+./app/node_modules
 # Python
 __pycache__/
 *.py[cod]
@@ -59,5 +59,3 @@ Thumbs.db
 # Logs
 *.log
 
-# Node modules (if any frontend)
-node_modules/
