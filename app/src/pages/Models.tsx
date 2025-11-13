@@ -31,7 +31,6 @@ const Models = () => {
   const [trainingModel, setTrainingModel] = useState<number | null>(null);
   const [myPublishedModels, setMyPublishedModels] = useState<any[]>([]);
   const [trainingMode, setTrainingMode] = useState<"local" | "server">("local");
-  const [localModelPath, setLocalModelPath] = useState("");
 
   // Publish form state
   const [publishForm, setPublishForm] = useState({
@@ -45,8 +44,8 @@ const Models = () => {
   });
 
   const {
-    name, picture, folder, trainingScript,
-    setName, setPicture, setFolder, setTrainingScript,
+    name, picture, folder, folderPath, trainingScript,
+    setName, setPicture, setFolder, setFolderPath, setTrainingScript,
     send, deleteModel, models, loading
   } = useContext(ModelContext)!;
 
@@ -362,8 +361,8 @@ const Models = () => {
                     <Label htmlFor="localPath">Local Model Path</Label>
                     <Input
                       id="localPath"
-                      value={localModelPath}
-                      onChange={(e) => setLocalModelPath(e.target.value)}
+                      value={folderPath}
+                      onChange={(e) => setFolderPath(e.target.value)}
                       placeholder="/home/user/my-models/my-model"
                     />
                     <p className="text-xs text-muted-foreground">
@@ -438,6 +437,54 @@ const Models = () => {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Agent Status Banner */}
+      {subscriptionContext?.isAgentConnected ? (
+        <Alert className="border-green-500/50 bg-green-500/10">
+          <AlertCircle className="h-4 w-4 text-green-500" />
+          <AlertDescription className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-sm">
+                <span className="font-semibold text-green-500">Training Agent Connected</span>
+                {subscriptionContext.agentSystemInfo && (
+                  <span className="text-muted-foreground ml-2">
+                    • {subscriptionContext.agentSystemInfo.platform}
+                    • {subscriptionContext.agentSystemInfo.cuda_available ? `${subscriptionContext.agentSystemInfo.gpu_count}x GPU` : 'CPU'}
+                  </span>
+                )}
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/settings")}
+              className="ml-4"
+            >
+              View Details
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Alert className="border-yellow-500/50 bg-yellow-500/10">
+          <AlertCircle className="h-4 w-4 text-yellow-500" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-sm">
+              <span className="font-semibold text-yellow-500">Training Agent Not Connected</span>
+              <span className="text-muted-foreground ml-2">
+                Connect your training agent to train models on your machine
+              </span>
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/settings")}
+              className="ml-4"
+            >
+              Setup Agent
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Tabs for My Models and Published Models */}
       <Tabs defaultValue="my-models" className="w-full">

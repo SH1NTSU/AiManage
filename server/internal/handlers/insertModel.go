@@ -58,11 +58,26 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("📄 Received model name:", name)
 
-	modelDir := "./uploads/" + name
-	if err := os.MkdirAll(modelDir, os.ModePerm); err != nil {
-		log.Println("❌ Failed to create model directory:", err)
-		http.Error(w, "Could not create model directory: "+err.Error(), http.StatusInternalServerError)
-		return
+	// Check if this is local mode or server mode
+	folderPath := r.FormValue("folder_path")
+	isLocalMode := folderPath != ""
+
+	log.Printf("📍 Mode: %s", map[bool]string{true: "Local", false: "Server"}[isLocalMode])
+
+	var modelDir string
+	if isLocalMode {
+		// Local mode: use the provided path
+		modelDir = folderPath
+		log.Printf("📂 Using local folder path: %s", modelDir)
+	} else {
+		// Server mode: create uploads directory
+		modelDir = "./uploads/" + name
+		if err := os.MkdirAll(modelDir, os.ModePerm); err != nil {
+			log.Println("❌ Failed to create model directory:", err)
+			http.Error(w, "Could not create model directory: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		log.Printf("📁 Created server directory: %s", modelDir)
 	}
 
 	// Handle picture upload (optional)
@@ -90,51 +105,55 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 		log.Println("ℹ️ No picture provided (optional)")
 	}
 
-	// Handle folder/model zip upload (required)
-	zipFile, zipHeader, err := r.FormFile("folder")
-	if err != nil {
-		log.Println("❌ No model zip file provided:", err)
-		log.Println("💡 Expected file field name: 'folder'")
+	// Handle folder/model zip upload (only for server mode)
+	if !isLocalMode {
+		zipFile, zipHeader, err := r.FormFile("folder")
+		if err != nil {
+			log.Println("❌ No model zip file provided:", err)
+			log.Println("💡 Expected file field name: 'folder'")
 
-		// Suggest available field names
-		if r.MultipartForm != nil && r.MultipartForm.File != nil && len(r.MultipartForm.File) > 0 {
-			log.Println("💡 Available file fields:")
-			for key := range r.MultipartForm.File {
-				log.Printf("   - '%s'", key)
+			// Suggest available field names
+			if r.MultipartForm != nil && r.MultipartForm.File != nil && len(r.MultipartForm.File) > 0 {
+				log.Println("💡 Available file fields:")
+				for key := range r.MultipartForm.File {
+					log.Printf("   - '%s'", key)
+				}
 			}
+
+			http.Error(w, "You must provide a model zip file with field name 'folder' for server mode", http.StatusBadRequest)
+			return
 		}
+		defer zipFile.Close()
 
-		http.Error(w, "You must provide a model zip file with field name 'folder'", http.StatusBadRequest)
-		return
+		zipPath := modelDir + "/" + zipHeader.Filename
+		out, err := os.Create(zipPath)
+		if err != nil {
+			log.Println("❌ Could not create zip file:", err)
+			http.Error(w, "Could not save zip: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer out.Close()
+
+		if _, err := io.Copy(out, zipFile); err != nil {
+			log.Println("❌ Could not write zip file:", err)
+			http.Error(w, "Could not save zip: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		log.Println("✅ Model zip saved:", zipPath)
+
+		// Extract zip
+		if err := helpers.Unzip(zipPath, modelDir); err != nil {
+			log.Println("❌ Could not unzip file:", err)
+			http.Error(w, "Could not unzip model: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		log.Println("✅ Model unzipped to:", modelDir)
+
+		// Optional: remove the zip after extraction
+		os.Remove(zipPath)
+	} else {
+		log.Println("ℹ️ Local mode: Skipping file upload, using local path")
 	}
-	defer zipFile.Close()
-
-	zipPath := modelDir + "/" + zipHeader.Filename
-	out, err := os.Create(zipPath)
-	if err != nil {
-		log.Println("❌ Could not create zip file:", err)
-		http.Error(w, "Could not save zip: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer out.Close()
-
-	if _, err := io.Copy(out, zipFile); err != nil {
-		log.Println("❌ Could not write zip file:", err)
-		http.Error(w, "Could not save zip: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	log.Println("✅ Model zip saved:", zipPath)
-
-	// Extract zip
-	if err := helpers.Unzip(zipPath, modelDir); err != nil {
-		log.Println("❌ Could not unzip file:", err)
-		http.Error(w, "Could not unzip model: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	log.Println("✅ Model unzipped to:", modelDir)
-
-	// Optional: remove the zip after extraction
-	os.Remove(zipPath)
 
 	// Get user email from context
 	email, ok := r.Context().Value(middlewares.UserEmailKey).(string)

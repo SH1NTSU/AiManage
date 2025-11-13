@@ -35,6 +35,9 @@ func NewRouter() http.Handler {
 		trainingHandler = handlers.NewTrainingHandler(agent)
 		deleteModelHandler = handlers.NewDeleteModelHandler(agent)
 
+		// Set global trainer for remote training support
+		handlers.SetGlobalTrainer(agent.GetTrainer())
+
 		// Set up broadcast callback for training updates
 		broadcaster := GetTrainingBroadcaster()
 		aiAgent.SetBroadcastCallback(func(trainingID string, updateType string, data interface{}) {
@@ -48,6 +51,9 @@ func NewRouter() http.Handler {
 		r.HandleFunc("/ws", WsHandler)
 		r.HandleFunc("/ws/training", TrainingWSHandler)
 		r.HandleFunc("/ws/agent", handlers.AgentWebSocketHandler)
+
+		// Agent model upload (uses API key auth, not JWT)
+		r.Post("/agent/upload-model", handlers.UploadTrainedModelHandler)
 
 		r.Post("/register", handlers.RegisterHandler)
 		r.Post("/login", handlers.LoginHandler)

@@ -8,6 +8,7 @@ import (
 	"server/helpers"
 	"server/internal/models"
 	"server/internal/repository"
+	"server/internal/ws"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,19 +24,12 @@ var Upgrader = websocket.Upgrader{
 	},
 }
 
-// Client represents a WebSocket connection with its associated user ID
-type Client struct {
-	Conn   *websocket.Conn
-	UserID int
-}
-
-// Global variables for managing clients and listener
+// Global variables for managing listener
 var (
-	clientsMutex     sync.Mutex
-	clients          = make(map[*websocket.Conn]*Client)
 	listenerConn     *pgxpool.Conn
 	listenerStarted  bool
 	stopListener     chan bool
+	listenerMutex    sync.Mutex
 )
 
 func WsHandler(w http.ResponseWriter, r *http.Request) {
@@ -84,15 +78,15 @@ func WsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("WebSocket client connected: %s (UserID: %d)", r.RemoteAddr, userID)
 
 	// Register client with user ID
-	client := &Client{
+	client := &ws.Client{
 		Conn:   conn,
 		UserID: userID,
 	}
 
-	clientsMutex.Lock()
-	clients[conn] = client
-	isFirstClient := len(clients) == 1
-	clientsMutex.Unlock()
+	ws.ClientsMutex.Lock()
+	ws.Clients[conn] = client
+	isFirstClient := len(ws.Clients) == 1
+	ws.ClientsMutex.Unlock()
 
 	// Start listener if this is the first client
 	if isFirstClient {
@@ -126,10 +120,10 @@ func WsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Unregister client
-	clientsMutex.Lock()
-	delete(clients, conn)
-	shouldStopListener := len(clients) == 0
-	clientsMutex.Unlock()
+	ws.ClientsMutex.Lock()
+	delete(ws.Clients, conn)
+	shouldStopListener := len(ws.Clients) == 0
+	ws.ClientsMutex.Unlock()
 
 	// Stop listener if no clients left
 	if shouldStopListener {
@@ -140,14 +134,14 @@ func WsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func startDatabaseListener() {
-	clientsMutex.Lock()
+	listenerMutex.Lock()
 	if listenerStarted {
-		clientsMutex.Unlock()
+		listenerMutex.Unlock()
 		return
 	}
 	listenerStarted = true
 	stopListener = make(chan bool)
-	clientsMutex.Unlock()
+	listenerMutex.Unlock()
 
 	log.Println("🎧 Starting PostgreSQL LISTEN for models_changes...")
 
@@ -157,25 +151,25 @@ func startDatabaseListener() {
 	conn, err := models.Pool.Acquire(ctx)
 	if err != nil {
 		log.Println("❌ Failed to acquire connection for LISTEN:", err)
-		clientsMutex.Lock()
+		listenerMutex.Lock()
 		listenerStarted = false
-		clientsMutex.Unlock()
+		listenerMutex.Unlock()
 		return
 	}
 
-	clientsMutex.Lock()
+	listenerMutex.Lock()
 	listenerConn = conn
-	clientsMutex.Unlock()
+	listenerMutex.Unlock()
 
 	// Start listening on the channel
 	_, err = conn.Exec(ctx, "LISTEN models_changes")
 	if err != nil {
 		log.Println("❌ Failed to LISTEN:", err)
 		conn.Release()
-		clientsMutex.Lock()
+		listenerMutex.Lock()
 		listenerStarted = false
 		listenerConn = nil
-		clientsMutex.Unlock()
+		listenerMutex.Unlock()
 		return
 	}
 
@@ -188,10 +182,10 @@ func startDatabaseListener() {
 			log.Println("🛑 Stopping database listener...")
 			conn.Exec(ctx, "UNLISTEN models_changes")
 			conn.Release()
-			clientsMutex.Lock()
+			listenerMutex.Lock()
 			listenerStarted = false
 			listenerConn = nil
-			clientsMutex.Unlock()
+			listenerMutex.Unlock()
 			return
 
 		default:
@@ -209,10 +203,10 @@ func startDatabaseListener() {
 						log.Println("🛑 Stopping database listener...")
 						conn.Exec(context.Background(), "UNLISTEN models_changes")
 						conn.Release()
-						clientsMutex.Lock()
+						listenerMutex.Lock()
 						listenerStarted = false
 						listenerConn = nil
-						clientsMutex.Unlock()
+						listenerMutex.Unlock()
 						return
 					default:
 						continue
@@ -233,12 +227,12 @@ func startDatabaseListener() {
 }
 
 func stopDatabaseListener() {
-	clientsMutex.Lock()
+	listenerMutex.Lock()
 	if !listenerStarted {
-		clientsMutex.Unlock()
+		listenerMutex.Unlock()
 		return
 	}
-	clientsMutex.Unlock()
+	listenerMutex.Unlock()
 
 	log.Println("Stopping database listener (no clients connected)...")
 	if stopListener != nil {
@@ -250,11 +244,11 @@ func broadcastModelsToClients() {
 	ctx := context.Background()
 
 	// Broadcast to all connected clients - each gets only their own models
-	clientsMutex.Lock()
-	defer clientsMutex.Unlock()
+	ws.ClientsMutex.Lock()
+	defer ws.ClientsMutex.Unlock()
 
 	successCount := 0
-	for conn, client := range clients {
+	for conn, client := range ws.Clients {
 		// Fetch models for this specific user
 		userModels, err := repository.GetModelsByUserID(ctx, client.UserID)
 		if err != nil {
@@ -269,7 +263,7 @@ func broadcastModelsToClients() {
 		if err := conn.WriteJSON(userModels); err != nil {
 			log.Println("❌ Error broadcasting to client:", err)
 			conn.Close()
-			delete(clients, conn)
+			delete(ws.Clients, conn)
 		} else {
 			successCount++
 		}

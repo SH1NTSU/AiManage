@@ -1,9 +1,11 @@
 package repository
 
-import ( "context"
+import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"server/internal/models"
@@ -303,6 +305,66 @@ func UpdateTrainedModelPath(ctx context.Context, modelName string, modelPath str
 	}
 
 	return nil
+}
+
+// GetModelByFolderPath retrieves a model by its folder path
+func GetModelByFolderPath(ctx context.Context, folderPath string) (*map[string]interface{}, error) {
+	if models.Pool == nil {
+		return nil, fmt.Errorf("database connection not initialized")
+	}
+
+	query := `
+		SELECT id, user_id, name, picture, folder, training_script, trained_model_path, trained_at, accuracy_score, created_at, updated_at
+		FROM models
+		WHERE $1 = ANY(folder)
+		LIMIT 1
+	`
+
+	rows, err := models.Pool.Query(ctx, query, folderPath)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		var id, userID int32
+		var name, picture, trainingScript string
+		var folder []string
+		var trainedModelPath, accuracyScore *string
+		var trainedAt, createdAt, updatedAt *time.Time
+
+		err := rows.Scan(&id, &userID, &name, &picture, &folder, &trainingScript, &trainedModelPath, &trainedAt, &accuracyScore, &createdAt, &updatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("scan failed: %w", err)
+		}
+
+		result := make(map[string]interface{})
+		result["id"] = id
+		result["user_id"] = userID
+		result["name"] = name
+		result["picture"] = picture
+		result["folder"] = folder
+		result["training_script"] = trainingScript
+		if trainedModelPath != nil {
+			result["trained_model_path"] = *trainedModelPath
+		}
+		if trainedAt != nil {
+			result["trained_at"] = *trainedAt
+		}
+		if accuracyScore != nil {
+			result["accuracy_score"] = *accuracyScore
+		}
+		if createdAt != nil {
+			result["created_at"] = *createdAt
+		}
+		if updatedAt != nil {
+			result["updated_at"] = *updatedAt
+		}
+
+		return &result, nil
+	}
+
+	return nil, fmt.Errorf("no model found with folder path: %s", folderPath)
 }
 
 // GetModelByName retrieves a model by its name (useful for training completion)

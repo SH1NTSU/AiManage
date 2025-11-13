@@ -18,10 +18,12 @@ interface ModelContextType {
   name: string;
   picture: File | null;
   folder: File[] | null;
+  folderPath: string;
   trainingScript: string;
   setName: (name: string) => void;
   setPicture: (file: File | null) => void;
   setFolder: (files: File[] | null) => void;
+  setFolderPath: (path: string) => void;
   setTrainingScript: (script: string) => void;
   send: () => Promise<void>;
   deleteModel: (modelId: number, modelName: string) => Promise<void>;
@@ -36,6 +38,7 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
   const [name, setName] = useState<string>("");
   const [picture, setPicture] = useState<File | null>(null);
   const [folder, setFolder] = useState<File[] | null>(null);
+  const [folderPath, setFolderPath] = useState<string>("");
   const [trainingScript, setTrainingScript] = useState<string>("train.py");
   const [models, setModels] = useState<Model[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -50,20 +53,31 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
       formData.append("name", name);
       formData.append("training_script", trainingScript);
 
+      // For local mode: send folder path instead of files
+      if (folderPath) {
+        formData.append("folder_path", folderPath);
+        console.log("Sending form data (local mode) with:", {
+          name,
+          picture: picture?.name,
+          folder_path: folderPath,
+          training_script: trainingScript
+        });
+      } else {
+        // For server mode: send files
+        if (folder) {
+          folder.forEach((file) => formData.append("folder", file));
+        }
+        console.log("Sending form data (server mode) with:", {
+          name,
+          picture: picture?.name,
+          folder: folder?.map(f => f.name),
+          training_script: trainingScript
+        });
+      }
+
       if (picture) {
         formData.append("picture", picture);
       }
-
-      if (folder) {
-        folder.forEach((file) => formData.append("folder", file));
-      }
-
-      console.log("Sending form data with:", {
-        name,
-        picture: picture?.name,
-        folder: folder?.map(f => f.name),
-        training_script: trainingScript
-      });
 
       const res = await axios.post(
         "http://localhost:8081/v1/insert",
@@ -82,6 +96,7 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
       setName("");
       setPicture(null);
       setFolder(null);
+      setFolderPath("");
       setTrainingScript("train.py");
 
     } catch (err: any) {
@@ -211,19 +226,47 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
 
         socket.onmessage = (event) => {
           try {
-            const updatedModels: Model[] = JSON.parse(event.data);
-            console.log("📥 [WebSocket] Received user-specific models update:", updatedModels);
+            const message = JSON.parse(event.data);
 
-            // DEBUG: Log trained model paths
-            updatedModels.forEach(model => {
-              if (model.trained_model_path) {
-                console.log(`  ✅ Model "${model.name}" has trained_model_path: ${model.trained_model_path}`);
-              } else {
-                console.log(`  ⚠️  Model "${model.name}" has NO trained_model_path`);
+            // Check if it's a typed message (agent_status, training_update, etc.)
+            if (message.type) {
+              console.log(`📥 [WebSocket] Received ${message.type}:`, message.data);
+
+              if (message.type === "training_update") {
+                // Training status update
+                const { training_id, status, message: msg, error_message } = message.data;
+                console.log(`🎯 Training ${training_id}: ${status}`);
+                if (msg) console.log(`   Message: ${msg}`);
+                if (error_message) console.error(`   Error: ${error_message}`);
+
+                // TODO: Update UI with training status
+                // You could show a toast notification or update a training progress component
+              } else if (message.type === "training_output") {
+                // Live training output
+                const { training_id, output } = message.data;
+                console.log(`📝 [Training ${training_id}] ${output}`);
+
+                // TODO: Stream output to a log viewer in the UI
+              } else if (message.type === "agent_status") {
+                // Agent status updates are handled by subscriptionContext
+                console.log("📡 Agent status update (handled by subscriptionContext)");
               }
-            });
+            } else {
+              // Legacy format: assume it's a model update array
+              const updatedModels: Model[] = message;
+              console.log("📥 [WebSocket] Received user-specific models update:", updatedModels);
 
-            setModels(updatedModels);
+              // DEBUG: Log trained model paths
+              updatedModels.forEach(model => {
+                if (model.trained_model_path) {
+                  console.log(`  ✅ Model "${model.name}" has trained_model_path: ${model.trained_model_path}`);
+                } else {
+                  console.log(`  ⚠️  Model "${model.name}" has NO trained_model_path`);
+                }
+              });
+
+              setModels(updatedModels);
+            }
           } catch (error) {
             console.error("Error parsing WebSocket message:", error);
           }
@@ -264,10 +307,12 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
         name,
         picture,
         folder,
+        folderPath,
         trainingScript,
         setName,
         setPicture,
         setFolder,
+        setFolderPath,
         setTrainingScript,
         send,
         deleteModel,

@@ -467,6 +467,34 @@ const Settings = () => {
                 </Badge>
               </div>
 
+              {subscriptionContext?.isAgentConnected && subscriptionContext?.agentSystemInfo && (
+                <div className="p-4 border rounded-lg space-y-3">
+                  <h4 className="font-semibold text-sm">System Information</h4>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-muted-foreground">Platform</p>
+                      <p className="font-mono">{subscriptionContext.agentSystemInfo.platform || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Python Version</p>
+                      <p className="font-mono text-xs">{subscriptionContext.agentSystemInfo.python_version?.split('\n')[0] || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">PyTorch</p>
+                      <p className="font-mono">{subscriptionContext.agentSystemInfo.pytorch_version || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">GPU</p>
+                      <p className="font-mono">
+                        {subscriptionContext.agentSystemInfo.cuda_available
+                          ? `${subscriptionContext.agentSystemInfo.gpu_count}x ${subscriptionContext.agentSystemInfo.gpu_name}`
+                          : 'CPU Only'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {!subscriptionContext?.isAgentConnected && (
                 <div className="bg-muted p-4 rounded-lg space-y-3">
                   <h4 className="font-semibold">Get Started with Agent Training</h4>

@@ -720,3 +720,56 @@ func toLower(c byte) byte {
 	}
 	return c
 }
+
+// Helper methods for TrainingProgress (for remote training)
+
+// AddLog adds a log line to the training progress
+func (tp *TrainingProgress) AddLog(log string) {
+	tp.mu.Lock()
+	defer tp.mu.Unlock()
+	tp.Logs = append(tp.Logs, log)
+}
+
+// AddMetrics adds training metrics and updates current epoch
+func (tp *TrainingProgress) AddMetrics(metrics TrainingMetrics) {
+	tp.mu.Lock()
+	defer tp.mu.Unlock()
+	tp.Metrics = append(tp.Metrics, metrics)
+	tp.CurrentEpoch = metrics.Epoch
+	if metrics.TotalEpochs > tp.TotalEpochs {
+		tp.TotalEpochs = metrics.TotalEpochs
+	}
+}
+
+// MarkCompleted marks the training as completed
+func (tp *TrainingProgress) MarkCompleted() {
+	tp.mu.Lock()
+	defer tp.mu.Unlock()
+	tp.Status = StatusCompleted
+	now := time.Now()
+	tp.EndTime = &now
+}
+
+// MarkFailed marks the training as failed with an error message
+func (tp *TrainingProgress) MarkFailed(errorMsg string) {
+	tp.mu.Lock()
+	defer tp.mu.Unlock()
+	tp.Status = StatusFailed
+	tp.ErrorMessage = errorMsg
+	now := time.Now()
+	tp.EndTime = &now
+}
+
+// SetModelPath sets the trained model path
+func (tp *TrainingProgress) SetModelPath(modelPath string) {
+	tp.mu.Lock()
+	defer tp.mu.Unlock()
+	tp.ModelPath = modelPath
+}
+
+// StoreTrainingProgress stores a training progress entry (for remote training)
+func (t *Trainer) StoreTrainingProgress(trainingID string, progress *TrainingProgress) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.activeTraining[trainingID] = progress
+}

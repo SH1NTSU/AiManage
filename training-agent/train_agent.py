@@ -13,6 +13,7 @@ from pathlib import Path
 import argparse
 import torch
 import time
+import aiohttp
 
 class TrainingAgent:
     def __init__(self, api_key: str, server_url: str = "ws://localhost:8081"):
@@ -30,11 +31,38 @@ class TrainingAgent:
         try:
             uri = f"{self.server_url}/v1/ws/agent?api_key={self.api_key}"
             self.websocket = await websockets.connect(uri)
-            print("✅ Connected to server!")
-            print("📡 Waiting for training jobs...")
-            return True
+            print("✅ WebSocket connection established!")
+
+            # Wait for welcome message to confirm server accepted connection
+            try:
+                welcome = await asyncio.wait_for(self.websocket.recv(), timeout=5.0)
+                welcome_data = json.loads(welcome)
+                if welcome_data.get("type") == "connected":
+                    print("✅ Server accepted connection!")
+                    print(f"   Message: {welcome_data.get('message', 'N/A')}")
+                    print("📡 Waiting for training jobs...")
+                    return True
+                else:
+                    print("⚠️  Unexpected welcome message:", welcome_data)
+                    return True  # Continue anyway
+            except asyncio.TimeoutError:
+                print("⚠️  No welcome message received, but connection seems active")
+                return True
+
+        except websockets.exceptions.InvalidStatusCode as e:
+            print(f"❌ Connection rejected by server: HTTP {e.status_code}")
+            if e.status_code == 401:
+                print("   Reason: Invalid or missing API key")
+                print("   Please check your API key and try again")
+            elif e.status_code == 500:
+                print("   Reason: Server error")
+                print("   The server might be having issues or the database is down")
+            return False
+        except ConnectionRefusedError:
+            print(f"❌ Connection refused - is the server running at {self.server_url}?")
+            return False
         except Exception as e:
-            print(f"❌ Connection failed: {str(e)}")
+            print(f"❌ Connection failed: {type(e).__name__}: {str(e)}")
             return False
 
     async def listen(self):
@@ -43,10 +71,12 @@ class TrainingAgent:
             async for message in self.websocket:
                 data = json.loads(message)
                 await self.handle_message(data)
-        except websockets.exceptions.ConnectionClosed:
-            print("⚠️  Connection closed by server")
+        except websockets.exceptions.ConnectionClosed as e:
+            print(f"⚠️  Connection closed by server (code: {e.code}, reason: {e.reason})")
+        except json.JSONDecodeError as e:
+            print(f"❌ Failed to parse message from server: {str(e)}")
         except Exception as e:
-            print(f"❌ Error: {str(e)}")
+            print(f"❌ Error in message handling: {type(e).__name__}: {str(e)}")
 
     async def handle_message(self, data: dict):
         """Handle messages from server"""
@@ -56,17 +86,26 @@ class TrainingAgent:
             await self.send_message({"type": "pong"})
 
         elif msg_type == "system_info_request":
+            print("📊 Server requesting system information...")
             info = self.get_system_info()
             await self.send_message({
                 "type": "system_info",
                 "data": info
             })
+            print("✅ System information sent to server")
 
         elif msg_type == "train":
             await self.handle_training(data.get("data", {}))
 
         elif msg_type == "stop":
             await self.stop_training()
+
+        elif msg_type == "connected":
+            # Already handled in connect(), but just in case
+            pass
+
+        else:
+            print(f"⚠️  Unknown message type from server: {msg_type}")
 
     def get_system_info(self):
         """Get system information"""
@@ -127,13 +166,44 @@ class TrainingAgent:
                 "training_id": training_id
             })
 
+            # Capture file snapshot before training
+            before_snapshot = self.capture_file_snapshot(folder_path)
+
             # Run training script
-            await self.run_training_script(
+            success = await self.run_training_script(
                 training_id,
                 folder_path,
                 script_path,
                 python_cmd
             )
+
+            # Detect trained model if training succeeded
+            model_path = None
+            if success:
+                after_snapshot = self.capture_file_snapshot(folder_path)
+                model_path = self.detect_trained_model(folder_path, before_snapshot, after_snapshot)
+                if model_path:
+                    print(f"💾 Detected trained model: {model_path}")
+
+                    # Upload model file to server
+                    full_model_path = os.path.join(folder_path, model_path)
+                    server_path = await self.upload_model_to_server(
+                        training_id,
+                        full_model_path,
+                        model_path
+                    )
+
+                    # Use server path if upload succeeded, otherwise use local path
+                    if server_path:
+                        model_path = server_path
+                        print(f"✅ Model uploaded to server: {server_path}")
+
+                # Send completion message with model path
+                await self.send_message({
+                    "type": "training_completed",
+                    "training_id": training_id,
+                    "model_path": model_path
+                })
 
         except Exception as e:
             await self.send_message({
@@ -185,10 +255,7 @@ class TrainingAgent:
 
             if return_code == 0:
                 print("\n✅ Training completed successfully!")
-                await self.send_message({
-                    "type": "training_completed",
-                    "training_id": training_id
-                })
+                return True  # Success
             else:
                 stderr = process.stderr.read()
                 print(f"\n❌ Training failed with code {return_code}")
@@ -198,6 +265,7 @@ class TrainingAgent:
                     "training_id": training_id,
                     "error": stderr
                 })
+                return False  # Failed
 
         except Exception as e:
             print(f"\n❌ Error running training: {str(e)}")
@@ -206,6 +274,7 @@ class TrainingAgent:
                 "training_id": training_id,
                 "error": str(e)
             })
+            return False  # Failed
 
     async def stop_training(self):
         """Stop current training"""
@@ -220,6 +289,130 @@ class TrainingAgent:
         """Send message to server"""
         if self.websocket:
             await self.websocket.send(json.dumps(data))
+
+    def capture_file_snapshot(self, folder_path):
+        """Capture snapshot of all files in directory"""
+        snapshot = {}
+        for root, dirs, files in os.walk(folder_path):
+            for file in files:
+                file_path = os.path.join(root, file)
+                try:
+                    stat = os.stat(file_path)
+                    snapshot[file_path] = {
+                        'mtime': stat.st_mtime,
+                        'size': stat.st_size
+                    }
+                except:
+                    pass
+        print(f"📸 Captured snapshot of {len(snapshot)} files")
+        return snapshot
+
+    def detect_trained_model(self, folder_path, before, after):
+        """Detect new or modified model files"""
+        model_extensions = [
+            '.pth', '.pt',           # PyTorch
+            '.h5', '.keras',         # TensorFlow/Keras
+            '.pkl', '.pickle',       # scikit-learn
+            '.ckpt',                 # TensorFlow checkpoints
+            '.pb',                   # TensorFlow protobuf
+            '.onnx',                 # ONNX
+            '.safetensors',          # Hugging Face
+            '.joblib',               # scikit-learn
+            '.model',                # Generic
+        ]
+
+        changed_models = []
+
+        for file_path, after_info in after.items():
+            # Check if it's a model file
+            if not any(file_path.endswith(ext) for ext in model_extensions):
+                continue
+
+            # New file or modified file
+            before_info = before.get(file_path)
+            if not before_info:
+                changed_models.append(file_path)
+                print(f"🆕 New model file: {os.path.basename(file_path)}")
+            elif after_info['mtime'] > before_info['mtime'] or after_info['size'] != before_info['size']:
+                changed_models.append(file_path)
+                print(f"♻️  Modified model file: {os.path.basename(file_path)}")
+
+        if not changed_models:
+            print("ℹ️  No model files detected")
+            return None
+
+        # Select the best model
+        return self.select_best_model(changed_models, folder_path)
+
+    def select_best_model(self, models, folder_path):
+        """Select the most likely final model from candidates"""
+        if len(models) == 1:
+            return os.path.relpath(models[0], folder_path)
+
+        print(f"🤔 Multiple models detected, selecting best one...")
+
+        # Priority 1: Keywords in filename
+        for model in models:
+            basename = os.path.basename(model).lower()
+            if any(keyword in basename for keyword in ['best', 'final', 'trained']):
+                print(f"✨ Selected by keyword: {os.path.basename(model)}")
+                return os.path.relpath(model, folder_path)
+
+        # Priority 2: Standard output directories
+        for model in models:
+            if any(dir_name in model for dir_name in ['saved_models', 'outputs', 'checkpoints', 'models']):
+                print(f"📁 Selected from standard directory: {os.path.basename(model)}")
+                return os.path.relpath(model, folder_path)
+
+        # Priority 3: Largest file
+        largest = max(models, key=lambda f: os.path.getsize(f))
+        size_mb = os.path.getsize(largest) / (1024 * 1024)
+        print(f"📏 Selected largest file: {os.path.basename(largest)} ({size_mb:.2f} MB)")
+        return os.path.relpath(largest, folder_path)
+
+    async def upload_model_to_server(self, training_id, file_path, original_path):
+        """Upload trained model file to server"""
+        try:
+            # Extract model name from training ID (format: "ModelName_timestamp")
+            model_name = training_id.split('_')[0] if '_' in training_id else training_id
+
+            print(f"\n📤 Uploading model to server...")
+            print(f"   Model: {model_name}")
+            print(f"   File: {file_path}")
+
+            # Convert WebSocket URL to HTTP URL
+            http_url = self.server_url.replace('ws://', 'http://').replace('wss://', 'https://')
+            upload_url = f"{http_url}/v1/agent/upload-model"
+
+            # Get file size
+            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            print(f"   Size: {file_size_mb:.2f} MB")
+
+            # Prepare form data
+            data = aiohttp.FormData()
+            data.add_field('model_name', model_name)
+            data.add_field('original_path', original_path)
+            data.add_field('model_file',
+                          open(file_path, 'rb'),
+                          filename=os.path.basename(file_path))
+
+            # Upload with progress
+            async with aiohttp.ClientSession() as session:
+                headers = {'Authorization': f'Bearer {self.api_key}'}
+                async with session.post(upload_url, data=data, headers=headers) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        server_path = result.get('server_path')
+                        print(f"✅ Upload successful!")
+                        return server_path
+                    else:
+                        error_text = await response.text()
+                        print(f"❌ Upload failed: {response.status} - {error_text}")
+                        return None
+
+        except Exception as e:
+            print(f"❌ Error uploading model: {str(e)}")
+            return None
 
     async def run(self):
         """Main run loop"""

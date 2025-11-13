@@ -41,8 +41,11 @@ test-pokemon
 *.swp
 *.swo
 *~
+# server
+./server/uploads/
 
-# OS
+
+
 .DS_Store
 Thumbs.db
 
