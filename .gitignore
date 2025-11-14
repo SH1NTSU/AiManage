@@ -1,10 +1,9 @@
 # Python virtual environments
 venv/
 server/venv_cpu/
-./server/.env
 ENV/
 .venv/
-./app/node_modules
+
 # Python
 __pycache__/
 *.py[cod]
@@ -12,8 +11,6 @@ __pycache__/
 *.so
 *.egg
 *.egg-info/
-dist/
-build/
 
 # Go
 *.exe
@@ -41,21 +38,36 @@ test-pokemon
 *.swp
 *.swo
 *~
-# server
-./server/uploads/
 
-
-
+# OS files
 .DS_Store
 Thumbs.db
 
-# Uploads directory (optional - uncomment if you don't want to track uploads)
-# uploads/
+# Node.js
+node_modules/
+.npm
+.eslintcache
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Vite
+.vite/
+
+# Uploads directory
+server/uploads/
+uploads/
 
 # Environment files
 .env
 .env.local
+.env.*.local
 
 # Logs
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
