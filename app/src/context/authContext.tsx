@@ -41,7 +41,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     refreshPromise = (async () => {
       try {
         const res = await axios.get("http://localhost:8081/v1/refresh", { withCredentials: true });
-        console.log("✅ Token refreshed");
         setToken(res.data.token);
         localStorage.setItem("token", res.data.token);
       } catch {
@@ -60,7 +59,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const reqInterceptor = axios.interceptors.request.use(async (config) => {
       const currentToken = localStorage.getItem("token");
       if (currentToken && isTokenExpired(currentToken)) {
-        console.log("🔄 Token expired. Trying to refresh...");
         await refresh();
       }
       const latestToken = localStorage.getItem("token");

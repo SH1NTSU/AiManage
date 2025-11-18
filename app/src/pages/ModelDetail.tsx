@@ -573,91 +573,6 @@ const ModelDetail = () => {
             </CardContent>
           </Card>
 
-          {/* Training Statistics */}
-          {model.accuracy_score && (
-            <Card className="bg-gradient-card border-border shadow-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-primary" />
-                  Training Statistics
-                </CardTitle>
-                <CardDescription>Performance metrics from training</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {/* Accuracy Score */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-muted-foreground">Accuracy</span>
-                      <TrendingUp className="w-4 h-4 text-primary" />
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold text-primary">
-                        {(model.accuracy_score * 100).toFixed(1)}%
-                      </span>
-                    </div>
-                    <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-primary to-primary/60 rounded-full transition-all"
-                        style={{ width: `${model.accuracy_score * 100}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Model Type */}
-                  {model.model_type && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-muted-foreground">Model Type</span>
-                        <Cpu className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                      <p className="text-xl font-semibold">{model.model_type}</p>
-                      <p className="text-xs text-muted-foreground">Architecture</p>
-                    </div>
-                  )}
-
-                  {/* Framework */}
-                  {model.framework && (
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-muted-foreground">Framework</span>
-                        <Code className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                      <p className="text-xl font-semibold">{model.framework}</p>
-                      <p className="text-xs text-muted-foreground">Training platform</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Performance Badge */}
-                <div className="mt-6 pt-6 border-t border-border">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Performance Level</span>
-                    <Badge
-                      className={`${
-                        model.accuracy_score >= 0.9
-                          ? "bg-green-500/20 text-green-500 border-green-500/30"
-                          : model.accuracy_score >= 0.75
-                          ? "bg-blue-500/20 text-blue-500 border-blue-500/30"
-                          : model.accuracy_score >= 0.6
-                          ? "bg-yellow-500/20 text-yellow-500 border-yellow-500/30"
-                          : "bg-orange-500/20 text-orange-500 border-orange-500/30"
-                      }`}
-                    >
-                      {model.accuracy_score >= 0.9
-                        ? "Excellent"
-                        : model.accuracy_score >= 0.75
-                        ? "Good"
-                        : model.accuracy_score >= 0.6
-                        ? "Fair"
-                        : "Moderate"}
-                    </Badge>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Tags */}
           {model.tags && model.tags.length > 0 && (
             <Card className="bg-gradient-card border-border shadow-card">
@@ -828,12 +743,12 @@ const ModelDetail = () => {
                   </div>
                 )}
 
-                {model.accuracy_score && (
+                {model.accuracy_score != null && model.accuracy_score !== undefined && (
                   <div className="flex items-start gap-3">
                     <TrendingUp className="w-5 h-5 text-muted-foreground mt-0.5" />
                     <div>
                       <p className="text-sm font-medium">Accuracy Score</p>
-                      <p className="text-sm text-muted-foreground">{(model.accuracy_score * 100).toFixed(2)}%</p>
+                      <p className="text-sm text-muted-foreground">{(model.accuracy_score || 0).toFixed(2)}%</p>
                     </div>
                   </div>
                 )}
@@ -858,6 +773,59 @@ const ModelDetail = () => {
               </div>
             </CardContent>
           </Card>
+
+          {/* Training Statistics - Compact */}
+          {model.accuracy_score != null && model.accuracy_score !== undefined && (
+            <Card className="bg-gradient-card border-border shadow-card">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-primary" />
+                  Training Statistics
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Accuracy Score */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-muted-foreground">Accuracy</span>
+                    <span className="text-xl font-bold text-primary">
+                      {(model.accuracy_score || 0).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-primary to-primary/60 rounded-full transition-all"
+                      style={{ width: `${Math.min((model.accuracy_score || 0), 100)}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Performance Badge */}
+                <div className="flex items-center justify-between pt-2 border-t border-border">
+                  <span className="text-sm text-muted-foreground">Performance</span>
+                  <Badge
+                    className={`${
+                      model.accuracy_score >= 90
+                        ? "bg-green-500/20 text-green-500 border-green-500/30"
+                        : model.accuracy_score >= 75
+                        ? "bg-blue-500/20 text-blue-500 border-blue-500/30"
+                        : model.accuracy_score >= 60
+                        ? "bg-yellow-500/20 text-yellow-500 border-yellow-500/30"
+                        : "bg-orange-500/20 text-orange-500 border-orange-500/30"
+                    }`}
+                  >
+                    {model.accuracy_score >= 90
+                      ? "Excellent"
+                      : model.accuracy_score >= 75
+                      ? "Good"
+                      : model.accuracy_score >= 60
+                      ? "Fair"
+                      : "Moderate"}
+                  </Badge>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       </div>
 

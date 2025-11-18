@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"server/internal/middlewares"
 	"server/internal/repository"
 	"server/internal/ws"
+
 	"github.com/gorilla/websocket"
 )
 
@@ -22,6 +24,8 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true // Allow all origins for now - restrict in production
 	},
+	ReadBufferSize:  1024 * 1024, // 1MB read buffer for large training outputs
+	WriteBufferSize: 1024 * 1024, // 1MB write buffer
 }
 
 // AgentConnection represents a connected training agent
@@ -184,14 +188,31 @@ func (ac *AgentConnection) HandleMessages() {
 		})
 	}()
 
+	// Set read deadline to detect dead connections
+	ac.Conn.SetReadDeadline(time.Now().Add(2 * time.Minute))
+	ac.Conn.SetPongHandler(func(string) error {
+		ac.mu.Lock()
+		ac.LastPing = time.Now()
+		ac.mu.Unlock()
+		ac.Conn.SetReadDeadline(time.Now().Add(2 * time.Minute))
+		return nil
+	})
+
 	for {
 		_, message, err := ac.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("❌ WebSocket error: %v", err)
+			} else if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
+				log.Printf("✅ WebSocket closed normally: %s", ac.UserEmail)
+			} else {
+				log.Printf("⚠️  WebSocket read error: %v", err)
 			}
 			break
 		}
+
+		// Reset read deadline after successful read
+		ac.Conn.SetReadDeadline(time.Now().Add(2 * time.Minute))
 
 		var msg map[string]interface{}
 		if err := json.Unmarshal(message, &msg); err != nil {
@@ -206,9 +227,11 @@ func (ac *AgentConnection) HandleMessages() {
 
 		switch msgType {
 		case "pong":
+			// Legacy JSON pong message (WebSocket ping/pong frames are handled automatically via SetPongHandler)
 			ac.mu.Lock()
 			ac.LastPing = time.Now()
 			ac.mu.Unlock()
+			log.Printf("📡 JSON pong received from %s", ac.UserEmail)
 
 		case "system_info":
 			data := msg["data"]
@@ -237,7 +260,7 @@ func (ac *AgentConnection) HandleMessages() {
 
 			// Create training progress entry in trainer
 			if globalTrainer != nil && trainingID != "" {
-				createRemoteTrainingProgress(trainingID)
+				createRemoteTrainingProgress(trainingID, ac.UserID)
 			}
 
 			// Broadcast training started to frontend
@@ -337,7 +360,18 @@ func (ac *AgentConnection) SendMessage(data map[string]interface{}) error {
 	ac.mu.Lock()
 	defer ac.mu.Unlock()
 
-	return ac.Conn.WriteJSON(data)
+	// Set write deadline to prevent blocking indefinitely
+	deadline := time.Now().Add(10 * time.Second)
+	if err := ac.Conn.SetWriteDeadline(deadline); err != nil {
+		return fmt.Errorf("failed to set write deadline: %w", err)
+	}
+
+	err := ac.Conn.WriteJSON(data)
+
+	// Clear deadline after write
+	ac.Conn.SetWriteDeadline(time.Time{})
+
+	return err
 }
 
 // PingLoop sends periodic pings to keep connection alive
@@ -346,16 +380,36 @@ func (ac *AgentConnection) PingLoop() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		if err := ac.SendMessage(map[string]interface{}{"type": "ping"}); err != nil {
+		ac.mu.Lock()
+		conn := ac.Conn
+		ac.mu.Unlock()
+
+		if conn == nil {
 			return
 		}
 
-		// Check if agent is still alive
+		// Use WriteControl for ping instead of JSON message (more efficient)
+		deadline := time.Now().Add(5 * time.Second)
+		if err := conn.SetWriteDeadline(deadline); err != nil {
+			log.Printf("⚠️  Failed to set write deadline for ping: %v", err)
+			return
+		}
+
+		if err := conn.WriteControl(websocket.PingMessage, []byte{}, deadline); err != nil {
+			log.Printf("⚠️  Failed to send ping: %v", err)
+			return
+		}
+
+		conn.SetWriteDeadline(time.Time{})
+
+		// Check if agent is still alive (responds to pings)
 		ac.mu.Lock()
 		if time.Since(ac.LastPing) > 2*time.Minute {
 			ac.mu.Unlock()
-			log.Printf("⚠️  Agent timeout: %s", ac.UserEmail)
-			ac.Conn.Close()
+			log.Printf("⚠️  Agent timeout: %s (no pong received)", ac.UserEmail)
+			// Send close frame before closing
+			conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseGoingAway, "timeout"), time.Now().Add(5*time.Second))
+			conn.Close()
 			return
 		}
 		ac.mu.Unlock()
@@ -443,8 +497,9 @@ func GetAgentStatusHandler(w http.ResponseWriter, r *http.Request) {
 
 // Helper functions for remote training progress
 
-func createRemoteTrainingProgress(trainingID string) {
+func createRemoteTrainingProgress(trainingID string, userID int) {
 	progress := &aiAgent.TrainingProgress{
+		UserID:      userID,
 		Status:      aiAgent.StatusRunning,
 		StartTime:   time.Now(),
 		Logs:        []string{},
@@ -453,7 +508,7 @@ func createRemoteTrainingProgress(trainingID string) {
 	}
 
 	globalTrainer.StoreTrainingProgress(trainingID, progress)
-	log.Printf("📊 Created remote training progress: %s", trainingID)
+	log.Printf("📊 Created remote training progress: %s for user %d", trainingID, userID)
 }
 
 func updateRemoteTrainingProgress(trainingID string, output string) {
@@ -466,7 +521,37 @@ func updateRemoteTrainingProgress(trainingID string, output string) {
 	// Add log
 	progress.AddLog(output)
 
-	// Try to parse metrics from output
+	// Try to parse PROGRESS JSON lines first (more reliable)
+	if strings.HasPrefix(output, "PROGRESS:") {
+		jsonStr := strings.TrimPrefix(output, "PROGRESS:")
+		jsonStr = strings.TrimSpace(jsonStr)
+		if metrics := parseProgressJSONFromOutput(jsonStr); metrics != nil {
+			progress.AddMetrics(*metrics)
+			log.Printf("📈 Parsed metrics from JSON: Epoch %d/%d, Loss: %.4f, Train Acc: %.2f%%, Test Acc: %.2f%%",
+				metrics.Epoch, metrics.TotalEpochs, metrics.TrainLoss, metrics.TrainAccuracy*100, metrics.TestAccuracy*100)
+			// Store final metrics if:
+			// 1. Status is "completed"
+			// 2. This is the last epoch
+			// 3. Has any accuracy
+			isCompleted := false
+			if metrics.CustomMetrics != nil {
+				if status, ok := metrics.CustomMetrics["status"].(string); ok && status == "completed" {
+					isCompleted = true
+				}
+			}
+			if isCompleted || metrics.TestAccuracy > 0 || metrics.ValAccuracy > 0 || metrics.TrainAccuracy > 0 ||
+				(metrics.Epoch == metrics.TotalEpochs && metrics.TotalEpochs > 0) {
+				progress.SetFinalMetrics(metrics)
+				if isCompleted {
+					log.Printf("📊 Set FinalMetrics (status=completed) with accuracy: Test=%.2f%%, Val=%.2f%%, Train=%.2f%%",
+						metrics.TestAccuracy*100, metrics.ValAccuracy*100, metrics.TrainAccuracy*100)
+				}
+			}
+			return
+		}
+	}
+
+	// Try to parse metrics from output using regex patterns
 	if metrics := parseMetricsFromOutput(output); metrics != nil {
 		progress.AddMetrics(*metrics)
 		log.Printf("📈 Parsed metrics: Epoch %d/%d, Loss: %.4f",
@@ -483,23 +568,91 @@ func markRemoteTrainingCompleted(trainingID string, modelPath string) {
 
 	progress.MarkCompleted()
 
+	// Extract model name from training ID (format: "ModelName_timestamp")
+	modelName := extractModelName(trainingID)
+	if modelName == "" {
+		log.Printf("⚠️  Could not extract model name from training ID: %s", trainingID)
+		return
+	}
+	log.Printf("🔍 Extracted model name '%s' from training ID '%s'", modelName, trainingID)
+
+	// Extract final accuracy from training progress
+	// Note: Database expects percentage format (e.g., 95.50), but metrics are in 0-1 range
+	var finalAccuracy *float64
+	// Prefer FinalMetrics if available, then last metric from Metrics array
+	if progress.FinalMetrics != nil {
+		// Use FinalMetrics (prefer test > val > train)
+		if progress.FinalMetrics.TestAccuracy > 0 {
+			acc := progress.FinalMetrics.TestAccuracy * 100 // Convert 0-1 range to percentage
+			finalAccuracy = &acc
+			log.Printf("📊 Using FinalMetrics test accuracy: %.2f%%", acc)
+		} else if progress.FinalMetrics.ValAccuracy > 0 {
+			acc := progress.FinalMetrics.ValAccuracy * 100 // Convert 0-1 range to percentage
+			finalAccuracy = &acc
+			log.Printf("📊 Using FinalMetrics validation accuracy: %.2f%%", acc)
+		} else if progress.FinalMetrics.TrainAccuracy > 0 {
+			acc := progress.FinalMetrics.TrainAccuracy * 100 // Convert 0-1 range to percentage
+			finalAccuracy = &acc
+			log.Printf("📊 Using FinalMetrics train accuracy: %.2f%%", acc)
+		}
+	}
+	// Fallback: search through all metrics (reverse order) to find the most recent accuracy
+	if finalAccuracy == nil && len(progress.Metrics) > 0 {
+		// Search from end to beginning to find the most recent metric with accuracy
+		for i := len(progress.Metrics) - 1; i >= 0; i-- {
+			metric := progress.Metrics[i]
+			if metric.TestAccuracy > 0 {
+				acc := metric.TestAccuracy * 100 // Convert 0-1 range to percentage
+				finalAccuracy = &acc
+				log.Printf("📊 Using metric[%d] test accuracy: %.2f%%", i, acc)
+				break
+			} else if metric.ValAccuracy > 0 {
+				acc := metric.ValAccuracy * 100 // Convert 0-1 range to percentage
+				finalAccuracy = &acc
+				log.Printf("📊 Using metric[%d] validation accuracy: %.2f%%", i, acc)
+				break
+			} else if metric.TrainAccuracy > 0 {
+				acc := metric.TrainAccuracy * 100 // Convert 0-1 range to percentage
+				finalAccuracy = &acc
+				log.Printf("📊 Using metric[%d] train accuracy: %.2f%%", i, acc)
+				break
+			}
+		}
+	}
+	if finalAccuracy == nil {
+		log.Printf("⚠️  No accuracy found in training progress")
+		log.Printf("   FinalMetrics: %v", progress.FinalMetrics != nil)
+		if progress.FinalMetrics != nil {
+			log.Printf("   FinalMetrics.TestAccuracy: %.4f", progress.FinalMetrics.TestAccuracy)
+			log.Printf("   FinalMetrics.ValAccuracy: %.4f", progress.FinalMetrics.ValAccuracy)
+			log.Printf("   FinalMetrics.TrainAccuracy: %.4f", progress.FinalMetrics.TrainAccuracy)
+		}
+		log.Printf("   Total metrics: %d", len(progress.Metrics))
+	}
+
 	// Set model path if provided
 	if modelPath != "" {
 		progress.SetModelPath(modelPath)
 		log.Printf("💾 Set model path: %s", modelPath)
 
-		// Extract model name from training ID (format: "ModelName_timestamp")
-		modelName := extractModelName(trainingID)
-		if modelName != "" {
-			log.Printf("📝 Updating database for model: %s", modelName)
-
-			// Update database with trained model path
-			ctx := context.Background()
-			if err := repository.UpdateTrainedModelPath(ctx, modelName, modelPath); err != nil {
-				log.Printf("⚠️  Failed to update database with model path: %v", err)
+		// Update database with trained model path and accuracy
+		ctx := context.Background()
+		if err := repository.UpdateTrainedModelPathAndAccuracy(ctx, modelName, modelPath, finalAccuracy); err != nil {
+			log.Printf("⚠️  Failed to update database: %v", err)
+		} else {
+			if finalAccuracy != nil {
+				log.Printf("✅ Database updated with trained model path and accuracy (%.2f%%) for model: %s", *finalAccuracy, modelName)
 			} else {
 				log.Printf("✅ Database updated with trained model path for model: %s", modelName)
 			}
+		}
+	} else if finalAccuracy != nil {
+		// Update accuracy even if no model path
+		ctx := context.Background()
+		if err := repository.UpdateModelAccuracy(ctx, modelName, *finalAccuracy); err != nil {
+			log.Printf("⚠️  Failed to update accuracy: %v", err)
+		} else {
+			log.Printf("✅ Database updated with accuracy (%.2f%%) for model: %s", *finalAccuracy, modelName)
 		}
 	}
 
@@ -526,6 +679,98 @@ func markRemoteTrainingFailed(trainingID string, errorMsg string) {
 
 	progress.MarkFailed(errorMsg)
 	log.Printf("❌ Marked training as failed: %s - %s", trainingID, errorMsg)
+}
+
+func parseProgressJSONFromOutput(jsonStr string) *aiAgent.TrainingMetrics {
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
+		return nil
+	}
+
+	metrics := &aiAgent.TrainingMetrics{}
+
+	// Extract epoch
+	if epoch, ok := data["epoch"].(float64); ok {
+		metrics.Epoch = int(epoch)
+	}
+	if totalEpochs, ok := data["total_epochs"].(float64); ok {
+		metrics.TotalEpochs = int(totalEpochs)
+	}
+
+	// Extract losses
+	if trainLoss, ok := data["train_loss"].(float64); ok {
+		metrics.TrainLoss = trainLoss
+	}
+	if valLoss, ok := data["val_loss"].(float64); ok {
+		metrics.ValLoss = valLoss
+	}
+	if testLoss, ok := data["test_loss"].(float64); ok {
+		metrics.ValLoss = testLoss // Use ValLoss field for test loss
+	}
+
+	// Extract accuracies (convert from percentage to 0-1 range if needed)
+	if trainAcc, ok := data["train_accuracy"].(float64); ok {
+		if trainAcc > 1 {
+			metrics.TrainAccuracy = trainAcc / 100
+		} else {
+			metrics.TrainAccuracy = trainAcc
+		}
+	}
+	if valAcc, ok := data["val_accuracy"].(float64); ok {
+		if valAcc > 1 {
+			metrics.ValAccuracy = valAcc / 100
+		} else {
+			metrics.ValAccuracy = valAcc
+		}
+	}
+	if testAcc, ok := data["test_accuracy"].(float64); ok {
+		if testAcc > 1 {
+			metrics.TestAccuracy = testAcc / 100
+		} else {
+			metrics.TestAccuracy = testAcc
+		}
+	}
+	// Handle generic "accuracy" field (typically used for final/test accuracy)
+	if acc, ok := data["accuracy"].(float64); ok {
+		// Convert from percentage to 0-1 range if needed
+		if acc > 1 {
+			acc = acc / 100
+		}
+		// Generic accuracy typically represents test/final accuracy
+		// Prefer TestAccuracy, but fall back to TrainAccuracy if TestAccuracy already set from test_accuracy field
+		if metrics.TestAccuracy == 0 {
+			metrics.TestAccuracy = acc
+		} else if metrics.TrainAccuracy == 0 {
+			// If TestAccuracy is already set, use TrainAccuracy as fallback
+			metrics.TrainAccuracy = acc
+		} else {
+			// If both are set, prefer TestAccuracy for generic accuracy (overwrite)
+			metrics.TestAccuracy = acc
+		}
+	}
+
+	// Extract generic "loss" field if specific loss fields are not present
+	if metrics.TrainLoss == 0 {
+		if loss, ok := data["loss"].(float64); ok {
+			metrics.TrainLoss = loss
+		}
+	}
+
+	// Check for "status" field to identify final/completed metrics
+	// Store it in CustomMetrics for later use
+	if status, ok := data["status"].(string); ok {
+		if metrics.CustomMetrics == nil {
+			metrics.CustomMetrics = make(map[string]interface{})
+		}
+		metrics.CustomMetrics["status"] = status
+	}
+
+	// Only return if we found useful data
+	if metrics.Epoch > 0 || metrics.TrainLoss > 0 || metrics.TrainAccuracy > 0 || metrics.TestAccuracy > 0 || metrics.ValAccuracy > 0 {
+		return metrics
+	}
+
+	return nil
 }
 
 func parseMetricsFromOutput(line string) *aiAgent.TrainingMetrics {

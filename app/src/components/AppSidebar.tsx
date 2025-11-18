@@ -1,4 +1,4 @@
-import { Brain, BarChart3, Settings, Store, User } from "lucide-react";
+import { Brain, BarChart3, Settings, Store, User, Sparkles } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { useEffect, useState } from "react";
 import {
@@ -15,6 +15,7 @@ import {
 const items = [
   { title: "Models", url: "/", icon: Brain },
   { title: "Community", url: "/community", icon: Store },
+  { title: "HuggingFace", url: "/huggingface", icon: Sparkles },
   { title: "Statistics", url: "/statistics", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
@@ -50,9 +51,10 @@ export function AppSidebar() {
   return (
     <Sidebar className={open ? "w-60" : "w-16"} collapsible="icon">
       <SidebarContent className="flex flex-col h-full">
-        <div className="p-4 flex items-center justify-center border-b border-border">
-          <div className="w-10 h-10 rounded-lg bg-gradient-primary flex items-center justify-center">
-            <Brain className="w-6 h-6 text-primary-foreground" />
+        {/* Logo - Smaller when collapsed */}
+        <div className={`${open ? "p-4" : "p-3"} flex items-center justify-center border-b border-border`}>
+          <div className={`${open ? "w-10 h-10" : "w-8 h-8"} rounded-lg bg-gradient-primary flex items-center justify-center shrink-0`}>
+            <Brain className={`${open ? "w-6 h-6" : "w-5 h-5"} text-primary-foreground`} />
           </div>
         </div>
         <SidebarGroup className="flex-1">
@@ -82,24 +84,22 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/* User Profile Section */}
+        {/* User Profile Section - Show only picture when collapsed, smaller when collapsed */}
         {user && (
-          <div className="p-4 border-t border-border">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center flex-shrink-0">
-                <User className="w-5 h-5 text-primary" />
-              </div>
-              {open && (
-                <div className="flex flex-col min-w-0 flex-1">
-                  <span className="text-sm font-medium text-foreground truncate">
-                    {user.username}
-                  </span>
-                  <span className="text-xs text-muted-foreground truncate">
-                    {user.email}
-                  </span>
-                </div>
-              )}
+          <div className={`${open ? "p-4" : "p-3"} border-t border-border flex items-center justify-center`}>
+            <div className={`${open ? "w-10 h-10" : "w-8 h-8"} rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 flex items-center justify-center shrink-0`}>
+              <User className={`${open ? "w-5 h-5" : "w-4 h-4"} text-primary`} />
             </div>
+            {open && (
+              <div className="flex flex-col min-w-0 flex-1 ml-3">
+                <span className="text-sm font-medium text-foreground truncate">
+                  {user.username}
+                </span>
+                <span className="text-xs text-muted-foreground truncate">
+                  {user.email}
+                </span>
+              </div>
+            )}
           </div>
         )}
       </SidebarContent>

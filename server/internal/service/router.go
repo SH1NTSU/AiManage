@@ -67,6 +67,7 @@ func NewRouter() http.Handler {
 			protected.Use(middlewares.JWTGuard)
 			protected.Get("/health", handlers.HealthCheckHandler)
 			protected.Get("/me", handlers.GetCurrentUserHandler)
+			protected.Post("/regenerate-api-key", handlers.RegenerateAPIKeyHandler)
 
 			protected.Post("/insert", handlers.InsertHandler)
 			protected.Get("/getModels", handlers.ReadHandler)
@@ -117,7 +118,16 @@ func NewRouter() http.Handler {
 
 			// Agent status
 			protected.Get("/agent/status", handlers.GetAgentStatusHandler)
+
+			// HuggingFace integration routes
+			protected.Post("/huggingface/push", handlers.PushToHuggingFaceHandler)
+			protected.Post("/huggingface/import", handlers.ImportFromHuggingFaceHandler)
+			protected.Post("/huggingface/inference", handlers.RunHuggingFaceInferenceHandler)
 		})
+
+		// Public HuggingFace search (no auth required, but token optional)
+		r.Get("/huggingface/search", handlers.SearchHuggingFaceModelsHandler)
+		r.Post("/huggingface/search", handlers.SearchHuggingFaceModelsHandler)
 
 		// Public webhook endpoint (no auth required)
 		r.Post("/webhook/stripe", handlers.StripeWebhookHandler)

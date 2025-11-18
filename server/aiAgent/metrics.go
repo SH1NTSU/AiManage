@@ -3,80 +3,81 @@ package aiAgent
 import (
 	"fmt"
 	"math"
+	"sort"
 	"time"
 )
 
 // DetailedMetrics provides comprehensive analysis without AI
 type DetailedMetrics struct {
 	// Overview
-	TrainingStatus    string    `json:"training_status"`
-	StartTime         time.Time `json:"start_time"`
-	EndTime           time.Time `json:"end_time"`
-	TotalDuration     float64   `json:"total_duration_seconds"`
-	CompletedEpochs   int       `json:"completed_epochs"`
-	TotalEpochs       int       `json:"total_epochs"`
-	AverageEpochTime  float64   `json:"average_epoch_time_seconds"`
+	TrainingStatus   string    `json:"training_status"`
+	StartTime        time.Time `json:"start_time"`
+	EndTime          time.Time `json:"end_time"`
+	TotalDuration    float64   `json:"total_duration_seconds"`
+	CompletedEpochs  int       `json:"completed_epochs"`
+	TotalEpochs      int       `json:"total_epochs"`
+	AverageEpochTime float64   `json:"average_epoch_time_seconds"`
 
 	// Loss Metrics
-	InitialLoss       float64   `json:"initial_loss"`
-	FinalLoss         float64   `json:"final_loss"`
-	BestLoss          float64   `json:"best_loss"`
-	WorstLoss         float64   `json:"worst_loss"`
-	AverageLoss       float64   `json:"average_loss"`
-	LossImprovement   float64   `json:"loss_improvement_percent"`
-	LossStdDev        float64   `json:"loss_std_dev"`
+	InitialLoss     float64 `json:"initial_loss"`
+	FinalLoss       float64 `json:"final_loss"`
+	BestLoss        float64 `json:"best_loss"`
+	WorstLoss       float64 `json:"worst_loss"`
+	AverageLoss     float64 `json:"average_loss"`
+	LossImprovement float64 `json:"loss_improvement_percent"`
+	LossStdDev      float64 `json:"loss_std_dev"`
 
 	// Validation Loss Metrics
-	InitialValLoss    float64   `json:"initial_val_loss"`
-	FinalValLoss      float64   `json:"final_val_loss"`
-	BestValLoss       float64   `json:"best_val_loss"`
-	AverageValLoss    float64   `json:"average_val_loss"`
-	ValLossImprovement float64  `json:"val_loss_improvement_percent"`
+	InitialValLoss     float64 `json:"initial_val_loss"`
+	FinalValLoss       float64 `json:"final_val_loss"`
+	BestValLoss        float64 `json:"best_val_loss"`
+	AverageValLoss     float64 `json:"average_val_loss"`
+	ValLossImprovement float64 `json:"val_loss_improvement_percent"`
 
 	// Accuracy Metrics
-	InitialAccuracy   float64   `json:"initial_accuracy"`
-	FinalAccuracy     float64   `json:"final_accuracy"`
-	BestAccuracy      float64   `json:"best_accuracy"`
-	AverageAccuracy   float64   `json:"average_accuracy"`
+	InitialAccuracy     float64 `json:"initial_accuracy"`
+	FinalAccuracy       float64 `json:"final_accuracy"`
+	BestAccuracy        float64 `json:"best_accuracy"`
+	AverageAccuracy     float64 `json:"average_accuracy"`
 	AccuracyImprovement float64 `json:"accuracy_improvement_percent"`
 
 	// Validation Accuracy Metrics
-	InitialValAccuracy float64  `json:"initial_val_accuracy"`
-	FinalValAccuracy   float64  `json:"final_val_accuracy"`
-	BestValAccuracy    float64  `json:"best_val_accuracy"`
-	AverageValAccuracy float64  `json:"average_val_accuracy"`
+	InitialValAccuracy     float64 `json:"initial_val_accuracy"`
+	FinalValAccuracy       float64 `json:"final_val_accuracy"`
+	BestValAccuracy        float64 `json:"best_val_accuracy"`
+	AverageValAccuracy     float64 `json:"average_val_accuracy"`
 	ValAccuracyImprovement float64 `json:"val_accuracy_improvement_percent"`
 
 	// Test Metrics (if available)
-	TestAccuracy      float64   `json:"test_accuracy,omitempty"`
-	TestLoss          float64   `json:"test_loss,omitempty"`
+	TestAccuracy float64 `json:"test_accuracy,omitempty"`
+	TestLoss     float64 `json:"test_loss,omitempty"`
 
 	// Training Behavior Analysis
-	IsConverging      bool      `json:"is_converging"`
-	IsOverfitting     bool      `json:"is_overfitting"`
-	IsUnderfitting    bool      `json:"is_underfitting"`
-	TrainValGap       float64   `json:"train_val_gap"`
-	LossVariability   string    `json:"loss_variability"` // "stable", "moderate", "unstable"
+	IsConverging    bool    `json:"is_converging"`
+	IsOverfitting   bool    `json:"is_overfitting"`
+	IsUnderfitting  bool    `json:"is_underfitting"`
+	TrainValGap     float64 `json:"train_val_gap"`
+	LossVariability string  `json:"loss_variability"` // "stable", "moderate", "unstable"
 
 	// Performance Assessment
-	OverallScore      float64   `json:"overall_score"` // 0-100
-	PerformanceLevel  string    `json:"performance_level"` // "excellent", "good", "fair", "poor"
+	OverallScore     float64 `json:"overall_score"`     // 0-100
+	PerformanceLevel string  `json:"performance_level"` // "excellent", "good", "fair", "poor"
 
 	// Chart Data (ready for React charts)
-	EpochData         []EpochMetric `json:"epoch_data"`
-	LossHistory       []float64     `json:"loss_history"`
-	ValLossHistory    []float64     `json:"val_loss_history"`
-	AccuracyHistory   []float64     `json:"accuracy_history"`
-	ValAccuracyHistory []float64    `json:"val_accuracy_history"`
+	EpochData          []EpochMetric `json:"epoch_data"`
+	LossHistory        []float64     `json:"loss_history"`
+	ValLossHistory     []float64     `json:"val_loss_history"`
+	AccuracyHistory    []float64     `json:"accuracy_history"`
+	ValAccuracyHistory []float64     `json:"val_accuracy_history"`
 
 	// Insights & Recommendations
-	Insights          []string      `json:"insights"`
-	Warnings          []string      `json:"warnings"`
-	Recommendations   []string      `json:"recommendations"`
+	Insights        []string `json:"insights"`
+	Warnings        []string `json:"warnings"`
+	Recommendations []string `json:"recommendations"`
 
 	// Model Files
-	ModelPath         string        `json:"model_path,omitempty"`
-	HasCheckpoint     bool          `json:"has_checkpoint"`
+	ModelPath     string `json:"model_path,omitempty"`
+	HasCheckpoint bool   `json:"has_checkpoint"`
 }
 
 // EpochMetric represents metrics for a single epoch (chart-ready)
@@ -92,19 +93,19 @@ type EpochMetric struct {
 // GenerateDetailedMetrics creates comprehensive metrics from training progress
 func GenerateDetailedMetrics(progress *TrainingProgress) *DetailedMetrics {
 	metrics := &DetailedMetrics{
-		TrainingStatus:  string(progress.Status),
-		StartTime:       progress.StartTime,
-		CompletedEpochs: progress.CurrentEpoch,
-		TotalEpochs:     progress.TotalEpochs,
-		EpochData:       []EpochMetric{},
-		LossHistory:     []float64{},
-		ValLossHistory:  []float64{},
-		AccuracyHistory: []float64{},
+		TrainingStatus:     string(progress.Status),
+		StartTime:          progress.StartTime,
+		CompletedEpochs:    progress.CurrentEpoch,
+		TotalEpochs:        progress.TotalEpochs,
+		EpochData:          []EpochMetric{},
+		LossHistory:        []float64{},
+		ValLossHistory:     []float64{},
+		AccuracyHistory:    []float64{},
 		ValAccuracyHistory: []float64{},
-		Insights:        []string{},
-		Warnings:        []string{},
-		Recommendations: []string{},
-		ModelPath:       progress.ModelPath,
+		Insights:           []string{},
+		Warnings:           []string{},
+		Recommendations:    []string{},
+		ModelPath:          progress.ModelPath,
 	}
 
 	if progress.EndTime != nil {
@@ -123,9 +124,51 @@ func GenerateDetailedMetrics(progress *TrainingProgress) *DetailedMetrics {
 	}
 
 	// Extract metrics for each epoch
+	// Deduplicate by epoch - keep the most complete metric for each epoch
+	// Prefer epoch-level updates (with total_epochs or test/val metrics) over batch-level updates
+	epochMap := make(map[int]*TrainingMetrics)
+	for i := range progress.Metrics {
+		m := &progress.Metrics[i]
+		if m.Epoch > 0 {
+			existing, exists := epochMap[m.Epoch]
+			if !exists {
+				epochMap[m.Epoch] = m
+			} else {
+				// Determine completeness: epoch-level updates have test/val metrics or total_epochs
+				currentIsEpochLevel := (m.TestAccuracy > 0 || m.ValLoss > 0 || m.ValAccuracy > 0 || m.TotalEpochs > 0)
+				existingIsEpochLevel := (existing.TestAccuracy > 0 || existing.ValLoss > 0 || existing.ValAccuracy > 0 || existing.TotalEpochs > 0)
+
+				// Prefer epoch-level metrics over batch-level updates
+				if currentIsEpochLevel && !existingIsEpochLevel {
+					epochMap[m.Epoch] = m
+				} else if currentIsEpochLevel == existingIsEpochLevel {
+					// If both are same level, prefer the one with more complete data
+					currentComplete := (m.ValLoss > 0 || m.TestAccuracy > 0 || m.ValAccuracy > 0)
+					existingComplete := (existing.ValLoss > 0 || existing.TestAccuracy > 0 || existing.ValAccuracy > 0)
+
+					if currentComplete && !existingComplete {
+						epochMap[m.Epoch] = m
+					} else if currentComplete == existingComplete {
+						// If both are equally complete, prefer the later one (more recent)
+						epochMap[m.Epoch] = m
+					}
+				}
+			}
+		}
+	}
+
+	// Convert map to sorted slice by epoch
+	var sortedEpochs []int
+	for epoch := range epochMap {
+		sortedEpochs = append(sortedEpochs, epoch)
+	}
+	sort.Ints(sortedEpochs)
+
 	var trainLosses, valLosses, trainAccs, valAccs []float64
 
-	for _, m := range progress.Metrics {
+	// Process deduplicated metrics
+	for _, epoch := range sortedEpochs {
+		m := epochMap[epoch]
 		epochMetric := EpochMetric{
 			Epoch:         m.Epoch,
 			TrainLoss:     m.TrainLoss,
@@ -144,12 +187,12 @@ func GenerateDetailedMetrics(progress *TrainingProgress) *DetailedMetrics {
 			metrics.ValLossHistory = append(metrics.ValLossHistory, m.ValLoss)
 		}
 		if m.TrainAccuracy > 0 {
-			trainAccs = append(trainAccs, m.TrainAccuracy * 100)
-			metrics.AccuracyHistory = append(metrics.AccuracyHistory, m.TrainAccuracy * 100)
+			trainAccs = append(trainAccs, m.TrainAccuracy*100)
+			metrics.AccuracyHistory = append(metrics.AccuracyHistory, m.TrainAccuracy*100)
 		}
 		if m.ValAccuracy > 0 {
-			valAccs = append(valAccs, m.ValAccuracy * 100)
-			metrics.ValAccuracyHistory = append(metrics.ValAccuracyHistory, m.ValAccuracy * 100)
+			valAccs = append(valAccs, m.ValAccuracy*100)
+			metrics.ValAccuracyHistory = append(metrics.ValAccuracyHistory, m.ValAccuracy*100)
 		}
 	}
 

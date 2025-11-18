@@ -72,7 +72,16 @@ class TrainingAgent:
                 data = json.loads(message)
                 await self.handle_message(data)
         except websockets.exceptions.ConnectionClosed as e:
-            print(f"⚠️  Connection closed by server (code: {e.code}, reason: {e.reason})")
+            if e.code == 1000:  # Normal closure
+                print(f"✅ Connection closed normally by server")
+            elif e.code == 1001:  # Going away
+                print(f"⚠️  Server is going away (code: {e.code})")
+            elif e.code == 1006:  # Abnormal closure
+                print(f"⚠️  Connection closed abnormally (code: {e.code})")
+                print(f"   This usually means the connection was lost without a proper close frame")
+                print(f"   Possible causes: network issue, server restart, or timeout")
+            else:
+                print(f"⚠️  Connection closed by server (code: {e.code}, reason: {e.reason or 'N/A'})")
         except json.JSONDecodeError as e:
             print(f"❌ Failed to parse message from server: {str(e)}")
         except Exception as e:
@@ -82,10 +91,10 @@ class TrainingAgent:
         """Handle messages from server"""
         msg_type = data.get("type")
 
-        if msg_type == "ping":
-            await self.send_message({"type": "pong"})
+        # Note: WebSocket ping/pong frames are handled automatically by websockets library
+        # No need to handle JSON "ping" messages - server uses WebSocket ping frames
 
-        elif msg_type == "system_info_request":
+        if msg_type == "system_info_request":
             print("📊 Server requesting system information...")
             info = self.get_system_info()
             await self.send_message({
@@ -267,13 +276,23 @@ class TrainingAgent:
                 })
                 return False  # Failed
 
+        except websockets.exceptions.ConnectionClosed as e:
+            print(f"\n❌ WebSocket connection closed during training (code: {e.code})")
+            print(f"   Training may have completed but connection was lost")
+            # Don't try to send message if connection is closed
+            return False  # Failed
         except Exception as e:
             print(f"\n❌ Error running training: {str(e)}")
-            await self.send_message({
-                "type": "training_failed",
-                "training_id": training_id,
-                "error": str(e)
-            })
+            try:
+                await self.send_message({
+                    "type": "training_failed",
+                    "training_id": training_id,
+                    "error": str(e)
+                })
+            except websockets.exceptions.ConnectionClosed:
+                print("⚠️  Could not send error message - connection already closed")
+            except Exception as send_err:
+                print(f"⚠️  Failed to send error message: {send_err}")
             return False  # Failed
 
     async def stop_training(self):
@@ -288,7 +307,14 @@ class TrainingAgent:
     async def send_message(self, data: dict):
         """Send message to server"""
         if self.websocket:
-            await self.websocket.send(json.dumps(data))
+            try:
+                await self.websocket.send(json.dumps(data))
+            except websockets.exceptions.ConnectionClosed as e:
+                print(f"⚠️  Connection closed while sending message: {e.code} - {e.reason}")
+                raise
+            except Exception as e:
+                print(f"❌ Error sending message: {type(e).__name__}: {str(e)}")
+                raise
 
     def capture_file_snapshot(self, folder_path):
         """Capture snapshot of all files in directory"""

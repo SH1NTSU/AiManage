@@ -186,6 +186,8 @@ func (h *TrainingHandler) StartTraining(w http.ResponseWriter, r *http.Request) 
 		println("🖥️  [TRAINING] Starting training on server...")
 		ctx := context.Background()
 		trainer := h.agent.GetTrainer()
+		// Set user ID in request
+		req.UserID = int(userID)
 		progress, err := trainer.StartTraining(ctx, req)
 		if err != nil {
 			println("❌ [TRAINING] Failed to start:", err.Error())
@@ -220,11 +222,38 @@ func (h *TrainingHandler) GetTrainingProgress(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Get authenticated user
+	userEmail, ok := r.Context().Value(middlewares.UserEmailKey).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get user from database
+	user, err := repository.GetUserByEmail(r.Context(), userEmail)
+	if err != nil || user == nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	userID, ok := (*user)["id"].(int32)
+	if !ok {
+		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
+		return
+	}
+
 	trainer := h.agent.GetTrainer()
 	progress, err := trainer.GetProgress(trainingID)
 	if err != nil {
 		println("❌ [PROGRESS] Training not found:", trainingID)
 		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	// Security check: ensure user owns this training
+	if progress.UserID != int(userID) {
+		println("❌ [PROGRESS] User", userID, "attempted to access training", trainingID, "owned by user", progress.UserID)
+		http.Error(w, "Forbidden: You don't have permission to access this training", http.StatusForbidden)
 		return
 	}
 
@@ -240,10 +269,31 @@ func (h *TrainingHandler) GetTrainingProgress(w http.ResponseWriter, r *http.Req
 	})
 }
 
-// getAllTrainings returns all training jobs
+// getAllTrainings returns all training jobs for the authenticated user
 func (h *TrainingHandler) getAllTrainings(w http.ResponseWriter, r *http.Request) {
+	// Get authenticated user
+	userEmail, ok := r.Context().Value(middlewares.UserEmailKey).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get user from database
+	user, err := repository.GetUserByEmail(r.Context(), userEmail)
+	if err != nil || user == nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	userID, ok := (*user)["id"].(int32)
+	if !ok {
+		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
+		return
+	}
+
+	// Filter trainings by user ID
 	trainer := h.agent.GetTrainer()
-	trainings := trainer.GetAllTrainings()
+	trainings := trainer.GetTrainingsByUserID(int(userID))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -275,11 +325,38 @@ func (h *TrainingHandler) AnalyzeResults(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Get authenticated user
+	userEmail, ok := r.Context().Value(middlewares.UserEmailKey).(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Get user from database
+	user, err := repository.GetUserByEmail(r.Context(), userEmail)
+	if err != nil || user == nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	userID, ok := (*user)["id"].(int32)
+	if !ok {
+		http.Error(w, "Invalid user ID", http.StatusInternalServerError)
+		return
+	}
+
 	// Get training progress
 	trainer := h.agent.GetTrainer()
 	progress, err := trainer.GetProgress(requestBody.TrainingID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	// Security check: ensure user owns this training
+	if progress.UserID != int(userID) {
+		println("❌ [ANALYZE] User", userID, "attempted to analyze training", requestBody.TrainingID, "owned by user", progress.UserID)
+		http.Error(w, "Forbidden: You don't have permission to analyze this training", http.StatusForbidden)
 		return
 	}
 
@@ -301,18 +378,18 @@ func (h *TrainingHandler) AnalyzeResults(w http.ResponseWriter, r *http.Request)
 			// Return detailed metrics without AI
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success":  true,
-				"metrics":  detailedMetrics,
-				"warning":  "AI analysis not available, showing detailed metrics instead",
-				"error":    err.Error(),
+				"success": true,
+				"metrics": detailedMetrics,
+				"warning": "AI analysis not available, showing detailed metrics instead",
+				"error":   err.Error(),
 			})
 			return
 		}
 		// Combine AI analysis with metrics
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success":  true,
-			"metrics":  detailedMetrics,
+			"success":     true,
+			"metrics":     detailedMetrics,
 			"ai_analysis": aiAnalysis,
 		})
 		return

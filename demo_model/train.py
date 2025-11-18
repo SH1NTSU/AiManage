@@ -166,6 +166,8 @@ def main():
 
     # Training loop
     best_accuracy = 0
+    final_train_loss = 0
+    final_test_loss = 0
     for epoch in range(epochs):
         print(f"\n📚 Epoch {epoch + 1}/{epochs}")
 
@@ -195,6 +197,8 @@ def main():
         # Save best model
         if test_acc > best_accuracy:
             best_accuracy = test_acc
+            final_train_loss = train_loss
+            final_test_loss = test_loss
             model_path = os.path.join(os.path.dirname(__file__), 'models', 'best_model.pth')
             os.makedirs(os.path.dirname(model_path), exist_ok=True)
             torch.save({
@@ -229,8 +233,9 @@ def main():
     final_progress = {
         "epoch": epochs,
         "total_epochs": epochs,
-        "accuracy": best_accuracy,
-        "loss": test_loss,
+        "test_accuracy": best_accuracy,  # Use test_accuracy field (in percentage)
+        "train_loss": final_train_loss,
+        "test_loss": final_test_loss,
         "status": "completed"
     }
     print(f"PROGRESS: {json.dumps(final_progress)}")

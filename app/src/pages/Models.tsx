@@ -179,7 +179,6 @@ const Models = () => {
       if (publishForm.model_type) payload.model_type = publishForm.model_type;
       if (publishForm.framework) payload.framework = publishForm.framework;
 
-      console.log("Publishing model:", payload);
 
       const response = await fetch("http://localhost:8081/v1/publish", {
         method: "POST",
@@ -196,7 +195,6 @@ const Models = () => {
       }
 
       const result = await response.json();
-      console.log("Publish result:", result);
 
       toast({
         title: "Model Published!",

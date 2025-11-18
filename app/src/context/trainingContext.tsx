@@ -46,6 +46,7 @@ export interface DetailedMetrics {
   // Accuracy
   final_accuracy: number;
   final_val_accuracy: number;
+  test_accuracy?: number; // Test accuracy from FinalMetrics
   initial_accuracy: number;
   accuracy_improvement_percent: number;
 
@@ -126,7 +127,6 @@ export const TrainingProvider = ({ children }: { children: ReactNode }) => {
         }
       );
 
-      console.log("Training started:", response.data);
 
       // Extract training ID from response or create one
       const trainingId = `${folderName}_${Date.now()}`;
@@ -219,7 +219,6 @@ export const TrainingProvider = ({ children }: { children: ReactNode }) => {
         }
       );
 
-      console.log("Analysis complete:", response.data);
 
       const metricsData = response.data.metrics || response.data.analysis;
       setMetrics(metricsData);

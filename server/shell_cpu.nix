@@ -14,6 +14,7 @@ pkgs.mkShell {
     python3Packages.virtualenv
     stdenv.cc.cc.lib
     zlib
+    go-migrate
   ];
 
   shellHook = ''

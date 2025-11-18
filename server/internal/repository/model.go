@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"server/helpers"
 	"server/internal/models"
 )
 
@@ -41,7 +43,47 @@ func GetModelsByUserID(ctx context.Context, userID int) ([]map[string]interface{
 		row := make(map[string]interface{})
 		for i, v := range values {
 			fieldName := string(fieldDescriptions[i].Name)
-			row[fieldName] = v
+			
+			// Convert accuracy_score to float64 if it exists
+			if fieldName == "accuracy_score" && v != nil {
+				var acc float64
+				switch val := v.(type) {
+				case float64:
+					acc = val
+				case float32:
+					acc = float64(val)
+				case int64:
+					acc = float64(val)
+				case int32:
+					acc = float64(val)
+				case int:
+					acc = float64(val)
+				case string:
+					// Try to parse string to float64
+					if parsed, err := strconv.ParseFloat(val, 64); err == nil {
+						acc = parsed
+					} else {
+						row[fieldName] = nil
+						continue
+					}
+				default:
+					// Try to convert via fmt.Sprintf and parse
+					if str := fmt.Sprintf("%v", val); str != "" && str != "<nil>" {
+						if parsed, err := strconv.ParseFloat(str, 64); err == nil {
+							acc = parsed
+						} else {
+							row[fieldName] = nil
+							continue
+						}
+					} else {
+						row[fieldName] = nil
+						continue
+					}
+				}
+				row[fieldName] = acc
+			} else {
+				row[fieldName] = v
+			}
 
 			// Convert picture path from "./uploads/..." to "/uploads/..."
 			if fieldName == "picture" && v != nil {
@@ -226,22 +268,15 @@ func GetUserByEmail(ctx context.Context, email string) (*map[string]interface{},
 		stripe_customer_id, stripe_subscription_id, subscription_start_date, subscription_end_date
 		FROM users WHERE email = $1`
 
-	log.Printf("[DB] GetUserByEmail - Querying for email: %s", email)
-	log.Printf("[DB] Query: %s", query)
-
 	rows, err := models.Pool.Query(ctx, query, email)
 	if err != nil {
-		log.Printf("[DB ERROR] Query failed for email %s: %v", email, err)
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
 	defer rows.Close()
 
 	if !rows.Next() {
-		log.Printf("[DB] No user found for email: %s", email)
 		return nil, nil // User not found
 	}
-
-	log.Printf("[DB] User found for email: %s", email)
 
 	values, err := rows.Values()
 	if err != nil {
@@ -305,6 +340,84 @@ func UpdateTrainedModelPath(ctx context.Context, modelName string, modelPath str
 		log.Printf("Warning: No model found with name '%s' to update trained path", modelName)
 	} else {
 		log.Printf("Updated trained_model_path for model '%s' to '%s'", modelName, modelPath)
+	}
+
+	return nil
+}
+
+// UpdateModelAccuracy updates the accuracy_score for a specific model
+// accuracy parameter should be in percentage format (e.g., 95.50 for 95.5%)
+func UpdateModelAccuracy(ctx context.Context, modelName string, accuracy float64) error {
+	if models.Pool == nil {
+		return fmt.Errorf("database connection not initialized")
+	}
+
+	query := `
+		UPDATE models
+		SET accuracy_score = $1
+		WHERE name = $2
+	`
+
+	result, err := models.Pool.Exec(ctx, query, accuracy, modelName)
+	if err != nil {
+		return fmt.Errorf("update failed: %w", err)
+	}
+
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		log.Printf("⚠️  Warning: No model found with name '%s' to update accuracy", modelName)
+	} else {
+		log.Printf("✅ Updated accuracy_score for model '%s' to %.2f%%", modelName, accuracy)
+	}
+
+	return nil
+}
+
+// UpdateTrainedModelPathAndAccuracy updates both trained_model_path and accuracy_score for a specific model
+// accuracy parameter should be in percentage format (e.g., 95.50 for 95.5%)
+func UpdateTrainedModelPathAndAccuracy(ctx context.Context, modelName string, modelPath string, accuracy *float64) error {
+	if models.Pool == nil {
+		return fmt.Errorf("database connection not initialized")
+	}
+
+	var query string
+	var err error
+	var result interface{}
+
+	if accuracy != nil {
+		query = `
+			UPDATE models
+			SET trained_model_path = $1, trained_at = NOW(), accuracy_score = $2
+			WHERE name = $3
+		`
+		result, err = models.Pool.Exec(ctx, query, modelPath, *accuracy, modelName)
+	} else {
+		query = `
+			UPDATE models
+			SET trained_model_path = $1, trained_at = NOW()
+			WHERE name = $2
+		`
+		result, err = models.Pool.Exec(ctx, query, modelPath, modelName)
+	}
+
+	if err != nil {
+		return fmt.Errorf("update failed: %w", err)
+	}
+
+	// Extract rows affected from result (pgx v5 returns CommandTag)
+	var rowsAffected int64
+	if tag, ok := result.(interface{ RowsAffected() int64 }); ok {
+		rowsAffected = tag.RowsAffected()
+	}
+
+	if rowsAffected == 0 {
+		log.Printf("⚠️  Warning: No model found with name '%s' to update", modelName)
+	} else {
+		if accuracy != nil {
+			log.Printf("✅ Updated trained_model_path and accuracy_score for model '%s' (accuracy: %.2f%%)", modelName, *accuracy)
+		} else {
+			log.Printf("✅ Updated trained_model_path for model '%s'", modelName)
+		}
 	}
 
 	return nil
@@ -944,17 +1057,13 @@ func GetUserByApiKey(ctx context.Context, apiKey string) (*map[string]interface{
 
 	query := `SELECT id, email, username, api_key, subscription_tier, subscription_status, training_credits FROM users WHERE api_key = $1`
 
-	log.Printf("[DB] GetUserByApiKey - Querying for API key")
-
 	rows, err := models.Pool.Query(ctx, query, apiKey)
 	if err != nil {
-		log.Printf("[DB ERROR] Query failed for API key: %v", err)
 		return nil, fmt.Errorf("query failed: %w", err)
 	}
 	defer rows.Close()
 
 	if !rows.Next() {
-		log.Printf("[DB] No user found with provided API key")
 		return nil, nil
 	}
 
@@ -965,7 +1074,6 @@ func GetUserByApiKey(ctx context.Context, apiKey string) (*map[string]interface{
 	var trainingCredits *int
 
 	if err := rows.Scan(&id, &email, &username, &apiKeyDb, &subscriptionTier, &subscriptionStatus, &trainingCredits); err != nil {
-		log.Printf("[DB ERROR] Failed to scan row: %v", err)
 		return nil, fmt.Errorf("failed to scan row: %w", err)
 	}
 
@@ -983,7 +1091,6 @@ func GetUserByApiKey(ctx context.Context, apiKey string) (*map[string]interface{
 		user["training_credits"] = *trainingCredits
 	}
 
-	log.Printf("[DB] User found with API key: %s", email)
 	return &user, nil
 }
 
@@ -1029,20 +1136,148 @@ func InsertUser(ctx context.Context, email, password, username string) (int, err
 		return 0, fmt.Errorf("database connection not initialized")
 	}
 
+	// Generate API key for new user
+	apiKey, err := helpers.GenerateAPIKey(email)
+	if err != nil {
+		log.Printf("⚠️  Failed to generate API key for user %s: %v", email, err)
+		// Continue without API key - it can be generated later
+		apiKey = ""
+	}
+
 	query := `
-		INSERT INTO users (email, password, username)
-		VALUES ($1, $2, $3)
+		INSERT INTO users (email, password, username, api_key)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id
 	`
 
 	var id int
-	err := models.Pool.QueryRow(ctx, query, email, password, username).Scan(&id)
+	err = models.Pool.QueryRow(ctx, query, email, password, username, apiKey).Scan(&id)
 	if err != nil {
-		return 0, fmt.Errorf("insert failed: %w", err)
+		// If insertion fails due to unique constraint on api_key, retry with a new key
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
+			log.Printf("⚠️  API key collision, retrying with new key...")
+			apiKey, retryErr := helpers.GenerateAPIKey(email + time.Now().String())
+			if retryErr == nil {
+				err = models.Pool.QueryRow(ctx, query, email, password, username, apiKey).Scan(&id)
+			}
+		}
+		if err != nil {
+			return 0, fmt.Errorf("insert failed: %w", err)
+		}
 	}
 
-	log.Printf("Inserted user with ID: %d (username: %s)", id, username)
+	if apiKey != "" {
+		log.Printf("Inserted user with ID: %d (username: %s, api_key: sk_live_...)", id, username)
+	} else {
+		log.Printf("Inserted user with ID: %d (username: %s, no API key generated)", id, username)
+	}
 	return id, nil
+}
+
+// RegenerateAPIKey generates and updates a user's API key
+func RegenerateAPIKey(ctx context.Context, userID int) (string, error) {
+	if models.Pool == nil {
+		return "", fmt.Errorf("database connection not initialized")
+	}
+
+	// Get user email for key generation
+	user, err := GetUserByID(ctx, userID)
+	if err != nil || user == nil {
+		return "", fmt.Errorf("user not found: %w", err)
+	}
+
+	email, ok := (*user)["email"].(string)
+	if !ok {
+		return "", fmt.Errorf("invalid user email")
+	}
+
+	// Generate new API key
+	apiKey, err := helpers.GenerateAPIKey(email)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate API key: %w", err)
+	}
+
+	// Retry logic for unique constraint violations
+	maxRetries := 3
+	for i := 0; i < maxRetries; i++ {
+		query := `UPDATE users SET api_key = $1 WHERE id = $2 RETURNING api_key`
+		var updatedKey string
+		err = models.Pool.QueryRow(ctx, query, apiKey, userID).Scan(&updatedKey)
+		
+		if err == nil {
+			log.Printf("✅ Regenerated API key for user ID: %d", userID)
+			return updatedKey, nil
+		}
+
+		// If unique constraint violation, generate a new key and retry
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "unique constraint") {
+			log.Printf("⚠️  API key collision (attempt %d/%d), generating new key...", i+1, maxRetries)
+			apiKey, err = helpers.GenerateAPIKey(email + time.Now().String() + fmt.Sprintf("%d", i))
+			if err != nil {
+				return "", fmt.Errorf("failed to generate retry API key: %w", err)
+			}
+			continue
+		}
+
+		// Other errors
+		return "", fmt.Errorf("failed to update API key: %w", err)
+	}
+
+	return "", fmt.Errorf("failed to regenerate API key after %d attempts", maxRetries)
+}
+
+// EnsureUserHasAPIKey ensures a user has an API key, generating one if missing
+func EnsureUserHasAPIKey(ctx context.Context, userID int) (string, error) {
+	if models.Pool == nil {
+		return "", fmt.Errorf("database connection not initialized")
+	}
+
+	// Check if user already has an API key
+	user, err := GetUserByID(ctx, userID)
+	if err != nil || user == nil {
+		return "", fmt.Errorf("user not found: %w", err)
+	}
+
+	existingKey, ok := (*user)["api_key"].(string)
+	if ok && existingKey != "" {
+		return existingKey, nil
+	}
+
+	// User doesn't have an API key, generate one
+	log.Printf("⚠️  User %d doesn't have an API key, generating one...", userID)
+	return RegenerateAPIKey(ctx, userID)
+}
+
+// GetUserByID retrieves a user by ID
+func GetUserByID(ctx context.Context, userID int) (*map[string]interface{}, error) {
+	if models.Pool == nil {
+		return nil, fmt.Errorf("database connection not initialized")
+	}
+
+	query := `SELECT id, email, username, api_key, created_at, updated_at FROM users WHERE id = $1`
+
+	rows, err := models.Pool.Query(ctx, query, userID)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, nil
+	}
+
+	values, err := rows.Values()
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan row: %w", err)
+	}
+
+	fieldDescriptions := rows.FieldDescriptions()
+	row := make(map[string]interface{})
+	for i, v := range values {
+		row[string(fieldDescriptions[i].Name)] = v
+	}
+
+	return &row, nil
 }
 
 // InsertSession inserts a new session

@@ -43,7 +43,6 @@ const Statistics = () => {
 
   // Refresh models manually
   const handleRefreshModels = async () => {
-    console.log("🔄 [DEBUG] Manually refreshing models...");
     // The modelContext should automatically fetch via WebSocket, but we can trigger a re-render
     if (modelContext) {
       toast({
@@ -156,14 +155,6 @@ const Statistics = () => {
     const modelName = latestTrainingId ? getModelNameFromTrainingId(latestTrainingId) : null;
     const model = modelName ? findModelByName(modelName) : null;
 
-    // DEBUG: Log model info
-    console.log("🔍 [DEBUG] Download Button Check:");
-    console.log("  - Latest Training ID:", latestTrainingId);
-    console.log("  - Extracted Model Name:", modelName);
-    console.log("  - Found Model:", model);
-    console.log("  - Available Models:", modelContext?.models);
-    console.log("  - Model has trained_model_path:", model?.trained_model_path);
-    console.log("  - Model trained_at:", model?.trained_at);
 
     return (
       <div className="space-y-6 animate-slide-up">
@@ -265,7 +256,12 @@ const Statistics = () => {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-secondary">
-                {metrics.final_val_accuracy !== undefined ? metrics.final_val_accuracy.toFixed(2) : 'N/A'}%
+                {/* Prefer test_accuracy, fall back to final_val_accuracy */}
+                {metrics.test_accuracy !== undefined && metrics.test_accuracy > 0
+                  ? metrics.test_accuracy.toFixed(2)
+                  : metrics.final_val_accuracy !== undefined
+                  ? metrics.final_val_accuracy.toFixed(2)
+                  : 'N/A'}%
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 +{metrics.accuracy_improvement_percent !== undefined ? metrics.accuracy_improvement_percent.toFixed(1) : 'N/A'}% improvement

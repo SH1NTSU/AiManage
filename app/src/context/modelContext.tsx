@@ -1,5 +1,6 @@
 import axios from "axios";
-import { createContext, type ReactNode, useEffect, useState } from "react";
+import { createContext, type ReactNode, useEffect, useState, useContext } from "react";
+import { AuthContext } from "./authContext";
 
 interface Model {
   id: number;
@@ -35,6 +36,9 @@ interface ModelContextType {
 export const ModelContext = createContext<ModelContextType | null>(null);
 
 export const ModelProvider = ({ children }: { children: ReactNode }) => {
+  const authContext = useContext(AuthContext);
+  const token = authContext?.token || null;
+  
   const [name, setName] = useState<string>("");
   const [picture, setPicture] = useState<File | null>(null);
   const [folder, setFolder] = useState<File[] | null>(null);
@@ -56,23 +60,11 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
       // For local mode: send folder path instead of files
       if (folderPath) {
         formData.append("folder_path", folderPath);
-        console.log("Sending form data (local mode) with:", {
-          name,
-          picture: picture?.name,
-          folder_path: folderPath,
-          training_script: trainingScript
-        });
       } else {
         // For server mode: send files
         if (folder) {
           folder.forEach((file) => formData.append("folder", file));
         }
-        console.log("Sending form data (server mode) with:", {
-          name,
-          picture: picture?.name,
-          folder: folder?.map(f => f.name),
-          training_script: trainingScript
-        });
       }
 
       if (picture) {
@@ -90,7 +82,6 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
         }
       );
 
-      console.log("Upload successful:", res.data);
 
       // Reset form after successful upload
       setName("");
@@ -128,7 +119,6 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
         return;
       }
 
-      console.log(`Deleting model: ${modelName} (ID: ${modelId})`);
 
       const res = await axios.delete(
         "http://localhost:8081/v1/deleteModel",
@@ -145,7 +135,6 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
         }
       );
 
-      console.log("Delete successful:", res.data);
 
       // Optimistically remove the model from local state
       setModels(prevModels => prevModels.filter(model => model.id !== modelId));
@@ -165,31 +154,31 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Fetch initial models from authenticated endpoint
+  // Fetch models when token changes (login/logout)
   useEffect(() => {
     const fetchModels = async () => {
+      // Clear models immediately if no token (logout)
+      if (!token) {
+        setModels([]);
+        setError(null);
+        return;
+      }
+
       setLoading(true);
       try {
-        const token = localStorage.getItem("token");
-        if (!token) {
-          console.log("No token found, skipping model fetch");
-          setModels([]);
-          return;
-        }
-
         const res = await axios.get("http://localhost:8081/v1/getModels", {
           headers: {
             Authorization: `Bearer ${token}`
           }
         });
 
-        console.log("Fetched user models:", res.data);
         setModels(res.data || []);
         setError(null);
       } catch (err: any) {
         console.error("Error fetching models:", err);
         if (err.response?.status === 401) {
           setError("Unauthorized - please login");
+          setModels([]); // Clear models on unauthorized
         } else {
           setError("Failed to fetch models");
         }
@@ -199,28 +188,27 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
     };
 
     fetchModels();
-  }, []);
+  }, [token]); // Re-fetch when token changes
 
   // WebSocket for real-time updates with authentication
   useEffect(() => {
+    // Don't connect if no token
+    if (!token) {
+      return;
+    }
+
     let socket: WebSocket;
     let reconnectAttempts = 0;
     const maxReconnectAttempts = 10;
 
     const connectWebSocket = () => {
       try {
-        const token = localStorage.getItem("token");
-        if (!token) {
-          console.log("No token found, skipping WebSocket connection");
-          return;
-        }
-
+        // Use token from context (already checked above)
         // Include JWT token as query parameter
         const wsUrl = `ws://localhost:8081/v1/ws?token=${encodeURIComponent(token)}`;
         socket = new WebSocket(wsUrl);
 
         socket.onopen = () => {
-          console.log("WebSocket connected (authenticated)");
           reconnectAttempts = 0;
         };
 
@@ -230,41 +218,22 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
 
             // Check if it's a typed message (agent_status, training_update, etc.)
             if (message.type) {
-              console.log(`📥 [WebSocket] Received ${message.type}:`, message.data);
-
               if (message.type === "training_update") {
                 // Training status update
                 const { training_id, status, message: msg, error_message } = message.data;
-                console.log(`🎯 Training ${training_id}: ${status}`);
-                if (msg) console.log(`   Message: ${msg}`);
-                if (error_message) console.error(`   Error: ${error_message}`);
+                if (error_message) console.error(`Training ${training_id} error: ${error_message}`);
 
                 // TODO: Update UI with training status
                 // You could show a toast notification or update a training progress component
               } else if (message.type === "training_output") {
                 // Live training output
-                const { training_id, output } = message.data;
-                console.log(`📝 [Training ${training_id}] ${output}`);
-
                 // TODO: Stream output to a log viewer in the UI
               } else if (message.type === "agent_status") {
                 // Agent status updates are handled by subscriptionContext
-                console.log("📡 Agent status update (handled by subscriptionContext)");
               }
             } else {
               // Legacy format: assume it's a model update array
               const updatedModels: Model[] = message;
-              console.log("📥 [WebSocket] Received user-specific models update:", updatedModels);
-
-              // DEBUG: Log trained model paths
-              updatedModels.forEach(model => {
-                if (model.trained_model_path) {
-                  console.log(`  ✅ Model "${model.name}" has trained_model_path: ${model.trained_model_path}`);
-                } else {
-                  console.log(`  ⚠️  Model "${model.name}" has NO trained_model_path`);
-                }
-              });
-
               setModels(updatedModels);
             }
           } catch (error) {
@@ -273,11 +242,9 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
         };
 
         socket.onclose = (event) => {
-          console.log("WebSocket disconnected:", event.code, event.reason);
           if (reconnectAttempts < maxReconnectAttempts) {
             setTimeout(() => {
               reconnectAttempts++;
-              console.log(`Reconnecting WebSocket (attempt ${reconnectAttempts})`);
               connectWebSocket();
             }, 1000 * reconnectAttempts);
           }
@@ -299,7 +266,7 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
         socket.close();
       }
     };
-  }, []);
+  }, [token]); // Reconnect when token changes
 
   return (
     <ModelContext.Provider

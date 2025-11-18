@@ -81,12 +81,21 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Handle picture upload (optional)
+	// Always save picture to server's uploads directory, even in local mode
 	var picturePath string
 	pictureFile, pictureHeader, err := r.FormFile("picture")
 	if err == nil {
 		defer pictureFile.Close()
 
-		picturePath = modelDir + "/" + pictureHeader.Filename
+		// Always use server uploads directory for pictures
+		serverModelDir := "./uploads/" + name
+		if err := os.MkdirAll(serverModelDir, os.ModePerm); err != nil {
+			log.Println("❌ Failed to create picture directory:", err)
+			http.Error(w, "Could not create picture directory: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		picturePath = serverModelDir + "/" + pictureHeader.Filename
 		pictureOut, err := os.Create(picturePath)
 		if err != nil {
 			log.Println("❌ Could not create picture file:", err)
@@ -100,6 +109,8 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Could not save picture: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+		// Convert to relative path for database (remove ./ prefix)
+		picturePath = "/uploads/" + name + "/" + pictureHeader.Filename
 		log.Println("✅ Picture saved:", picturePath)
 	} else {
 		log.Println("ℹ️ No picture provided (optional)")

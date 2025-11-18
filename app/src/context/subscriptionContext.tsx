@@ -51,11 +51,9 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      console.log("Fetching subscription from server...");
       const response = await axios.get("http://localhost:8081/v1/subscription", {
         headers: { Authorization: `Bearer ${token}` }
       });
-      console.log("Subscription API response:", response.data);
       setSubscription(response.data.subscription);
     } catch (error) {
       console.error("Failed to fetch subscription:", error);
@@ -107,7 +105,6 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
     const ws = new WebSocket(`ws://localhost:8081/v1/ws?token=${token}`);
 
     ws.onopen = () => {
-      console.log("✅ WebSocket connected for agent status");
       // Fetch agent status again when WebSocket connects to ensure we have the latest state
       fetchAgentStatus();
     };
@@ -118,7 +115,6 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
 
         // Check if this is an agent status message
         if (data.type === "agent_status" && data.data) {
-          console.log("📡 Received agent status update:", data.data);
           setIsAgentConnected(data.data.connected);
           setAgentStatus(data.data.status);
           setAgentSystemInfo(data.data.system_info || null);
@@ -133,7 +129,6 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
     };
 
     ws.onclose = () => {
-      console.log("WebSocket closed");
       // When WebSocket closes, poll to check if agent is still connected
       fetchAgentStatus();
     };

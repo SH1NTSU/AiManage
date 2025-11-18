@@ -12,6 +12,7 @@ import ModelDetail from "./pages/ModelDetail";
 import Statistics from "./pages/Statistics";
 import Settings from "./pages/Settings";
 import Pricing from "./pages/Pricing";
+import HuggingFace from "./pages/HuggingFace";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./context/authContext";
@@ -93,6 +94,15 @@ const App = () => (
 		    element={
 		      <ProtectedRoute>
 			<Layout><Pricing /></Layout>
+		      </ProtectedRoute>
+		    }
+		  />
+
+		  <Route
+		    path="/huggingface"
+		    element={
+		      <ProtectedRoute>
+			<Layout><HuggingFace /></Layout>
 		      </ProtectedRoute>
 		    }
 		  />

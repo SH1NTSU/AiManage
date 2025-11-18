@@ -134,18 +134,42 @@ const Settings = () => {
   };
 
   const regenerateApiKey = async () => {
-    // TODO: Implement backend endpoint to regenerate API key
-    toast({
-      title: "Coming Soon",
-      description: "API key regeneration will be available soon",
-    });
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        toast({
+          title: "Error",
+          description: "You must be logged in to regenerate your API key",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    // When implemented:
-    // const token = localStorage.getItem("token");
-    // const response = await axios.post("http://localhost:8081/v1/regenerate-api-key", {}, {
-    //   headers: { Authorization: `Bearer ${token}` }
-    // });
-    // setApiKey(response.data.api_key);
+      const response = await axios.post(
+        "http://localhost:8081/v1/regenerate-api-key",
+        {},
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (response.data.success && response.data.api_key) {
+        setApiKey(response.data.api_key);
+        toast({
+          title: "Success",
+          description: "API key regenerated successfully",
+        });
+      } else {
+        throw new Error("Invalid response from server");
+      }
+    } catch (error: any) {
+      console.error("Failed to regenerate API key:", error);
+      toast({
+        title: "Error",
+        description: error.response?.data?.message || "Failed to regenerate API key",
+        variant: "destructive",
+      });
+    }
   };
 
   const downloadAgent = () => {
@@ -189,12 +213,10 @@ const Settings = () => {
         headers: { Authorization: `Bearer ${token}` }
       });
 
-      console.log("Checkout response:", response.data);
 
       if (response.data.checkout_url) {
         // Check if this is a mock checkout (contains mock_checkout=true)
         if (response.data.checkout_url.includes('mock_checkout=true')) {
-          console.log("Mock mode detected, calling mock-upgrade endpoint...");
           // Mock mode - actually upgrade the subscription in the database
           try {
             const upgradeResponse = await axios.post("http://localhost:8081/v1/subscription/mock-upgrade", {
@@ -203,7 +225,6 @@ const Settings = () => {
               headers: { Authorization: `Bearer ${token}` }
             });
 
-            console.log("Mock upgrade response:", upgradeResponse.data);
 
             if (upgradeResponse.data.success) {
               toast({
@@ -214,9 +235,7 @@ const Settings = () => {
 
               // Refresh subscription data
               if (subscriptionContext) {
-                console.log("Refreshing subscription context...");
                 await subscriptionContext.refreshSubscription();
-                console.log("Subscription refreshed:", subscriptionContext.subscription);
               } else {
                 console.error("Subscription context is null!");
               }
