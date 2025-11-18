@@ -837,8 +837,8 @@ const ModelDetail = () => {
             onOpenChange={setCheckoutOpen}
             modelName={model.name}
             price={model.price}
+            modelId={model.id}
             onSuccess={handleDownload}
-            mockMode={true}
           />
         </StripeProvider>
       )}

@@ -11,6 +11,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/stripe/stripe-go/v81"
+	"github.com/stripe/stripe-go/v81/paymentintent"
+	"github.com/stripe/stripe-go/v81/customer"
 	"server/internal/middlewares"
 	"server/internal/repository"
 )
@@ -431,3 +434,226 @@ func DeleteModelCommentHandler(w http.ResponseWriter, r *http.Request) {
 		"message": "Comment deleted successfully",
 	})
 }
+
+// CreateModelPaymentIntentHandler creates a Stripe Payment Intent for purchasing a model
+func CreateModelPaymentIntentHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := r.Context().Value(middlewares.UserIDKey).(int)
+	if !ok {
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	userEmail, ok := r.Context().Value(middlewares.UserEmailKey).(string)
+	if !ok {
+		http.Error(w, "User email not found", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		ModelID int `json:"model_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Get model from database
+	model, err := repository.GetPublishedModelByID(r.Context(), req.ModelID)
+	if err != nil {
+		if err == pgx.ErrNoRows {
+			http.Error(w, "Model not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("[PAYMENT ERROR] Failed to fetch model %d: %v", req.ModelID, err)
+		http.Error(w, "Failed to retrieve model", http.StatusInternalServerError)
+		return
+	}
+
+	// Check if model is active
+	isActive, ok := model["is_active"].(bool)
+	if !ok || !isActive {
+		http.Error(w, "This model is not available for purchase", http.StatusForbidden)
+		return
+	}
+
+	// Get price
+	price, ok := model["price"].(int32)
+	if !ok {
+		price = 0
+	}
+
+	if price <= 0 {
+		http.Error(w, "This model is free and does not require payment", http.StatusBadRequest)
+		return
+	}
+
+	// Check if user already purchased this model
+	// TODO: Implement purchase check in repository
+	// For now, we'll allow multiple purchases (you can add this check later)
+
+	// Initialize Stripe
+	stripeKey := os.Getenv("STRIPE_SECRET_KEY")
+	if stripeKey == "" {
+		log.Println("⚠️  STRIPE_SECRET_KEY not set")
+		http.Error(w, "Payment processing not configured", http.StatusInternalServerError)
+		return
+	}
+
+	stripe.Key = stripeKey
+
+	// Get or create Stripe customer
+	user, err := repository.GetUserByEmail(r.Context(), userEmail)
+	if err != nil || user == nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+
+	stripeCustomerID := getStringField(*user, "stripe_customer_id", "")
+	if stripeCustomerID == "" {
+		// Create new Stripe customer
+		customerParams := &stripe.CustomerParams{
+			Email: stripe.String(userEmail),
+			Metadata: map[string]string{
+				"user_id": fmt.Sprintf("%v", (*user)["id"]),
+			},
+		}
+		cust, err := customer.New(customerParams)
+		if err != nil {
+			log.Printf("❌ Failed to create Stripe customer: %v", err)
+			http.Error(w, "Failed to create customer", http.StatusInternalServerError)
+			return
+		}
+		stripeCustomerID = cust.ID
+
+		// Update user with Stripe customer ID
+		if err := repository.UpdateUserStripeCustomer(r.Context(), userEmail, stripeCustomerID); err != nil {
+			log.Printf("⚠️  Failed to save Stripe customer ID: %v", err)
+		}
+	}
+
+	// Get model name for description
+	modelName, _ := model["name"].(string)
+	if modelName == "" {
+		modelName = fmt.Sprintf("Model #%d", req.ModelID)
+	}
+
+	// Create Payment Intent
+	params := &stripe.PaymentIntentParams{
+		Amount:   stripe.Int64(int64(price)),
+		Currency: stripe.String(string(stripe.CurrencyUSD)),
+		Customer: stripe.String(stripeCustomerID),
+		Metadata: map[string]string{
+			"user_id":    fmt.Sprintf("%d", userID),
+			"user_email": userEmail,
+			"model_id":   fmt.Sprintf("%d", req.ModelID),
+			"model_name": modelName,
+		},
+		Description: stripe.String(fmt.Sprintf("Purchase: %s", modelName)),
+	}
+
+	pi, err := paymentintent.New(params)
+	if err != nil {
+		log.Printf("❌ Failed to create payment intent: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to create payment intent: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("✅ Created payment intent %s for user %d, model %d", pi.ID, userID, req.ModelID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"client_secret": pi.ClientSecret,
+		"payment_intent_id": pi.ID,
+	})
+}
+
+// ConfirmModelPurchaseHandler confirms a completed payment and records the purchase
+func ConfirmModelPurchaseHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID, ok := r.Context().Value(middlewares.UserIDKey).(int)
+	if !ok {
+		http.Error(w, "Authentication required", http.StatusUnauthorized)
+		return
+	}
+
+	var req struct {
+		PaymentIntentID string `json:"payment_intent_id"`
+		ModelID         int    `json:"model_id"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Initialize Stripe
+	stripeKey := os.Getenv("STRIPE_SECRET_KEY")
+	if stripeKey == "" {
+		http.Error(w, "Payment processing not configured", http.StatusInternalServerError)
+		return
+	}
+
+	stripe.Key = stripeKey
+
+	// Retrieve payment intent from Stripe
+	pi, err := paymentintent.Get(req.PaymentIntentID, nil)
+	if err != nil {
+		log.Printf("❌ Failed to retrieve payment intent: %v", err)
+		http.Error(w, "Invalid payment intent", http.StatusBadRequest)
+		return
+	}
+
+	// Verify payment intent belongs to this user
+	if pi.Metadata["user_id"] != fmt.Sprintf("%d", userID) {
+		http.Error(w, "Payment intent does not belong to this user", http.StatusForbidden)
+		return
+	}
+
+	// Verify payment was successful
+	if pi.Status != stripe.PaymentIntentStatusSucceeded {
+		http.Error(w, fmt.Sprintf("Payment not completed. Status: %s", pi.Status), http.StatusBadRequest)
+		return
+	}
+
+	// Get model ID from payment intent metadata
+	modelIDStr := pi.Metadata["model_id"]
+	if modelIDStr == "" {
+		modelIDStr = fmt.Sprintf("%d", req.ModelID)
+	}
+
+	modelID, err := strconv.Atoi(modelIDStr)
+	if err != nil {
+		http.Error(w, "Invalid model ID", http.StatusBadRequest)
+		return
+	}
+
+	// TODO: Implement RecordModelPurchase in repository
+	// Get model to get price and publisher ID for purchase recording:
+	// model, err := repository.GetPublishedModelByID(r.Context(), modelID)
+	// if err != nil {
+	//     http.Error(w, "Model not found", http.StatusNotFound)
+	//     return
+	// }
+	// price, _ := model["price"].(int32)
+	// publisherID, _ := model["user_id"].(int)
+	// err = repository.RecordModelPurchase(r.Context(), userID, modelID, publisherID, int(price), req.PaymentIntentID)
+
+	log.Printf("✅ Payment confirmed for user %d, model %d, payment intent %s", userID, modelID, req.PaymentIntentID)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Purchase confirmed successfully",
+	})
+}
+

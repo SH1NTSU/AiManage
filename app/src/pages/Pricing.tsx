@@ -83,45 +83,8 @@ const Pricing = () => {
       });
 
       if (response.data.checkout_url) {
-        // Check if this is a mock checkout (contains mock_checkout=true)
-        if (response.data.checkout_url.includes('mock_checkout=true')) {
-          // Mock mode - actually upgrade the subscription in the database
-          try {
-            const upgradeResponse = await axios.post("http://localhost:8081/v1/subscription/mock-upgrade", {
-              tier: tier,
-            }, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
-
-            if (upgradeResponse.data.success) {
-              toast({
-                title: "Subscription Updated! 🎉",
-                description: `Successfully upgraded to ${tier} tier (Development Mode). Redirecting...`,
-                duration: 3000,
-              });
-
-              // Refresh subscription data
-              if (subscriptionContext) {
-                await subscriptionContext.refreshSubscription();
-              }
-
-              // Redirect to settings after a short delay
-              setTimeout(() => {
-                window.location.href = "/settings";
-              }, 2000);
-            }
-          } catch (upgradeError: any) {
-            console.error("Mock upgrade error:", upgradeError);
-            toast({
-              title: "Upgrade Failed",
-              description: upgradeError.response?.data?.message || "Failed to upgrade subscription",
-              variant: "destructive",
-            });
-          }
-        } else {
-          // Real Stripe checkout - redirect
-          window.location.href = response.data.checkout_url;
-        }
+        // Redirect to Stripe checkout
+        window.location.href = response.data.checkout_url;
       } else {
         toast({
           title: "Error",

@@ -12,15 +12,15 @@ import {
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { CreditCard, Lock, ShieldCheck, CheckCircle2, Loader2 } from "lucide-react";
+import { CreditCard, Lock, CheckCircle2, Loader2 } from "lucide-react";
 
 interface StripeCheckoutProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   modelName: string;
   price: number;
+  modelId: number;
   onSuccess: () => void;
-  mockMode?: boolean;
 }
 
 const StripeCheckout = ({
@@ -28,8 +28,8 @@ const StripeCheckout = ({
   onOpenChange,
   modelName,
   price,
+  modelId,
   onSuccess,
-  mockMode = true,
 }: StripeCheckoutProps) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -49,59 +49,78 @@ const StripeCheckout = ({
     setProcessing(true);
 
     try {
-      if (mockMode) {
-        // Mock payment - simulate processing
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-
-        setSucceeded(true);
-        toast({
-          title: "Payment successful!",
-          description: `You've purchased ${modelName}`,
-        });
-
-        // Wait a moment to show success state
-        setTimeout(() => {
-          onSuccess();
-          onOpenChange(false);
-          setSucceeded(false);
-        }, 1500);
-      } else {
-        // Real Stripe payment would go here
-        const cardElement = elements.getElement(CardElement);
-
-        if (!cardElement) {
-          throw new Error("Card element not found");
-        }
-
-        // In production, you'd create a payment intent on your backend
-        // and confirm the payment here
-        const { error, paymentMethod } = await stripe.createPaymentMethod({
-          type: "card",
-          card: cardElement,
-        });
-
-        if (error) {
-          throw error;
-        }
-
-        // Call your backend to complete the payment
-        // const response = await fetch('/api/payment', {
-        //   method: 'POST',
-        //   body: JSON.stringify({ paymentMethodId: paymentMethod.id }),
-        // });
-
-        setSucceeded(true);
-        toast({
-          title: "Payment successful!",
-          description: `You've purchased ${modelName}`,
-        });
-
-        setTimeout(() => {
-          onSuccess();
-          onOpenChange(false);
-          setSucceeded(false);
-        }, 1500);
+      // Step 1: Create payment intent on backend
+      const token = localStorage.getItem("token");
+      if (!token) {
+        throw new Error("Authentication required");
       }
+
+      const intentResponse = await fetch("http://localhost:8081/v1/published-models/payment-intent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ model_id: modelId }),
+      });
+
+      if (!intentResponse.ok) {
+        const errorData = await intentResponse.text();
+        throw new Error(errorData || "Failed to create payment intent");
+      }
+
+      const { client_secret, payment_intent_id } = await intentResponse.json();
+
+      // Step 2: Get card element
+      const cardElement = elements.getElement(CardElement);
+      if (!cardElement) {
+        throw new Error("Card element not found");
+      }
+
+      // Step 3: Confirm payment with Stripe
+      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(client_secret, {
+        payment_method: {
+          card: cardElement,
+        },
+      });
+
+      if (confirmError) {
+        throw confirmError;
+      }
+
+      if (paymentIntent.status !== "succeeded") {
+        throw new Error(`Payment status: ${paymentIntent.status}`);
+      }
+
+      // Step 4: Confirm purchase on backend
+      const confirmResponse = await fetch("http://localhost:8081/v1/published-models/confirm-purchase", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          payment_intent_id: payment_intent_id,
+          model_id: modelId,
+        }),
+      });
+
+      if (!confirmResponse.ok) {
+        const errorData = await confirmResponse.text();
+        throw new Error(errorData || "Failed to confirm purchase");
+      }
+
+      setSucceeded(true);
+      toast({
+        title: "Payment successful!",
+        description: `You've purchased ${modelName}`,
+      });
+
+      setTimeout(() => {
+        onSuccess();
+        onOpenChange(false);
+        setSucceeded(false);
+      }, 1500);
     } catch (error: any) {
       console.error("Payment error:", error);
       toast({
@@ -157,35 +176,23 @@ const StripeCheckout = ({
                   Card Information
                 </label>
                 <div className="p-4 border border-border rounded-lg bg-card/30 focus-within:ring-2 focus-within:ring-primary/50 transition-all">
-                  {mockMode ? (
-                    <div className="space-y-2 text-sm text-muted-foreground">
-                      <p className="flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 text-green-500" />
-                        Mock Payment Mode (Development)
-                      </p>
-                      <p className="text-xs">
-                        Click "Pay Now" to simulate a successful payment. No real payment will be processed.
-                      </p>
-                    </div>
-                  ) : (
-                    <CardElement
-                      options={{
-                        style: {
-                          base: {
-                            fontSize: "16px",
-                            color: "hsl(0 0% 98%)",
-                            "::placeholder": {
-                              color: "hsl(0 0% 60%)",
-                            },
-                          },
-                          invalid: {
-                            color: "hsl(0 70% 55%)",
+                  <CardElement
+                    options={{
+                      style: {
+                        base: {
+                          fontSize: "16px",
+                          color: "hsl(0 0% 98%)",
+                          "::placeholder": {
+                            color: "hsl(0 0% 60%)",
                           },
                         },
-                        hidePostalCode: false,
-                      }}
-                    />
-                  )}
+                        invalid: {
+                          color: "hsl(0 70% 55%)",
+                        },
+                      },
+                      hidePostalCode: false,
+                    }}
+                  />
                 </div>
               </div>
 

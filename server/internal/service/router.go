@@ -83,6 +83,8 @@ func NewRouter() http.Handler {
 			protected.Get("/my-published-models", handlers.GetMyPublishedModelsHandler)
 			protected.Get("/published-models/{id}", handlers.GetPublishedModelByIDHandler)
 			protected.Post("/published-models/{id}/download", handlers.DownloadPublishedModelHandler)
+			protected.Post("/published-models/payment-intent", handlers.CreateModelPaymentIntentHandler)
+			protected.Post("/published-models/confirm-purchase", handlers.ConfirmModelPurchaseHandler)
 
 			// Likes
 			protected.Post("/published-models/{id}/like", handlers.LikeModelHandler)
@@ -119,15 +121,15 @@ func NewRouter() http.Handler {
 			// Agent status
 			protected.Get("/agent/status", handlers.GetAgentStatusHandler)
 
-			// HuggingFace integration routes
-			protected.Post("/huggingface/push", handlers.PushToHuggingFaceHandler)
-			protected.Post("/huggingface/import", handlers.ImportFromHuggingFaceHandler)
-			protected.Post("/huggingface/inference", handlers.RunHuggingFaceInferenceHandler)
+			// HuggingFace integration routes - commented out
+			// protected.Post("/huggingface/push", handlers.PushToHuggingFaceHandler)
+			// protected.Post("/huggingface/import", handlers.ImportFromHuggingFaceHandler)
+			// protected.Post("/huggingface/inference", handlers.RunHuggingFaceInferenceHandler)
 		})
 
-		// Public HuggingFace search (no auth required, but token optional)
-		r.Get("/huggingface/search", handlers.SearchHuggingFaceModelsHandler)
-		r.Post("/huggingface/search", handlers.SearchHuggingFaceModelsHandler)
+		// Public HuggingFace search (no auth required, but token optional) - commented out
+		// r.Get("/huggingface/search", handlers.SearchHuggingFaceModelsHandler)
+		// r.Post("/huggingface/search", handlers.SearchHuggingFaceModelsHandler)
 
 		// Public webhook endpoint (no auth required)
 		r.Post("/webhook/stripe", handlers.StripeWebhookHandler)

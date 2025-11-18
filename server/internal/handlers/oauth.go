@@ -6,33 +6,57 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"server/helpers"
 	"server/internal/repository"
+
+	"github.com/joho/godotenv"
 )
 
 // OAuth providers configuration
 var (
-	GoogleClientID     = os.Getenv("GOOGLE_CLIENT_ID")
-	GoogleClientSecret = os.Getenv("GOOGLE_CLIENT_SECRET")
-	GoogleRedirectURI  = os.Getenv("GOOGLE_REDIRECT_URI")
+	GoogleClientID     string
+	GoogleClientSecret string
+	GoogleRedirectURI  string
 
-	GithubClientID     = os.Getenv("GITHUB_CLIENT_ID")
+	GithubClientID     string
+	GithubClientSecret string
+
+	AppleClientID     string
+	AppleClientSecret string
+	AppleRedirectURI  string
+)
+
+func init() {
+	// Load .env file before loading environment variables
+	_ = godotenv.Load()
+
+	// Now load the environment variables
+	GoogleClientID = os.Getenv("GOOGLE_CLIENT_ID")
+	GoogleClientSecret = os.Getenv("GOOGLE_CLIENT_SECRET")
+	GoogleRedirectURI = os.Getenv("GOOGLE_REDIRECT_URI")
+
+	GithubClientID = os.Getenv("GITHUB_CLIENT_ID")
 	GithubClientSecret = os.Getenv("GITHUB_CLIENT_SECRET")
 
-	AppleClientID     = os.Getenv("APPLE_CLIENT_ID")
+	AppleClientID = os.Getenv("APPLE_CLIENT_ID")
 	AppleClientSecret = os.Getenv("APPLE_CLIENT_SECRET")
-	AppleRedirectURI  = os.Getenv("APPLE_REDIRECT_URI")
-)
+	AppleRedirectURI = os.Getenv("APPLE_REDIRECT_URI")
+
+	log.Printf("🔧 OAuth Config Loaded - GitHub Client ID: %s (length: %d)", GithubClientID, len(GithubClientID))
+	log.Printf("🔧 OAuth Config Loaded - Google Client ID: %s (length: %d)", GoogleClientID[:10]+"...", len(GoogleClientID))
+}
 
 // GoogleOAuthHandler handles Google OAuth callback
 func GoogleOAuthHandler(w http.ResponseWriter, r *http.Request) {
-	// Get the authorization code from request
+	// Get the authorization code from request (Auth.js style)
 	var req struct {
-		Code string `json:"code"`
+		Code        string `json:"code"`
+		RedirectURI string `json:"redirect_uri,omitempty"` // Optional, falls back to env var
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -40,30 +64,63 @@ func GoogleOAuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Use redirect URI from request or fall back to environment variable
+	redirectURI := req.RedirectURI
+	if redirectURI == "" {
+		redirectURI = GoogleRedirectURI
+	}
+	if redirectURI == "" {
+		// Default redirect URI if not set
+		redirectURI = "http://localhost:5173/auth/callback/google"
+	}
+
 	// Exchange code for access token
 	tokenResp, err := http.PostForm("https://oauth2.googleapis.com/token", map[string][]string{
 		"code":          {req.Code},
 		"client_id":     {GoogleClientID},
 		"client_secret": {GoogleClientSecret},
-		"redirect_uri":  {GoogleRedirectURI},
+		"redirect_uri":  {redirectURI},
 		"grant_type":    {"authorization_code"},
 	})
 
 	if err != nil {
-		log.Printf("Error exchanging code for token: %v", err)
-		http.Error(w, "Failed to exchange code", http.StatusInternalServerError)
+		log.Printf("❌ Error exchanging code for token: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to exchange code: %v", err), http.StatusInternalServerError)
 		return
 	}
 	defer tokenResp.Body.Close()
 
+	// Check if token exchange was successful
+	if tokenResp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(tokenResp.Body)
+		log.Printf("❌ Google token exchange failed with status %d: %s", tokenResp.StatusCode, string(bodyBytes))
+		http.Error(w, fmt.Sprintf("Token exchange failed: %s", string(bodyBytes)), http.StatusBadRequest)
+		return
+	}
+
 	var tokenData struct {
 		AccessToken string `json:"access_token"`
 		IDToken     string `json:"id_token"`
+		Error       string `json:"error"`
+		ErrorDesc   string `json:"error_description"`
 	}
 
 	if err := json.NewDecoder(tokenResp.Body).Decode(&tokenData); err != nil {
-		log.Printf("Error decoding token response: %v", err)
-		http.Error(w, "Failed to decode token", http.StatusInternalServerError)
+		log.Printf("❌ Error decoding token response: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to decode token: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Check for OAuth errors in response
+	if tokenData.Error != "" {
+		log.Printf("❌ Google OAuth error: %s - %s", tokenData.Error, tokenData.ErrorDesc)
+		http.Error(w, fmt.Sprintf("OAuth error: %s", tokenData.ErrorDesc), http.StatusBadRequest)
+		return
+	}
+
+	if tokenData.AccessToken == "" {
+		log.Printf("❌ No access token received from Google")
+		http.Error(w, "No access token received", http.StatusInternalServerError)
 		return
 	}
 
@@ -164,7 +221,8 @@ func GoogleOAuthHandler(w http.ResponseWriter, r *http.Request) {
 // GitHubOAuthHandler handles GitHub OAuth callback
 func GitHubOAuthHandler(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Code string `json:"code"`
+		Code        string `json:"code"`
+		RedirectURI string `json:"redirect_uri,omitempty"` // Optional, but GitHub requires it to match
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -172,11 +230,31 @@ func GitHubOAuthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Use redirect URI from request or use a default
+	// GitHub requires redirect_uri to match exactly what was used in authorization
+	redirectURI := req.RedirectURI
+	if redirectURI == "" {
+		// Default redirect URI if not provided
+		redirectURI = "http://localhost:5173/auth/callback/github"
+	}
+
+	log.Printf("🔄 GitHub OAuth: Exchanging code with redirect_uri: %s", redirectURI)
+	log.Printf("🔍 GitHub Client ID: %s", GithubClientID)
+	log.Printf("🔍 GitHub Client Secret length: %d", len(GithubClientSecret))
+	log.Printf("🔍 Code length: %d", len(req.Code))
+
 	// Exchange code for access token
-	tokenReq, err := http.NewRequest("POST", "https://github.com/login/oauth/access_token", strings.NewReader(fmt.Sprintf(
-		"client_id=%s&client_secret=%s&code=%s",
-		GithubClientID, GithubClientSecret, req.Code,
-	)))
+	// GitHub requires redirect_uri parameter to match the authorization request exactly
+	// Use url.Values to properly encode all form parameters
+	formData := url.Values{}
+	formData.Set("client_id", GithubClientID)
+	formData.Set("client_secret", GithubClientSecret)
+	formData.Set("code", req.Code)
+	formData.Set("redirect_uri", redirectURI)
+
+	log.Printf("🔍 Form data being sent: %s", formData.Encode())
+
+	tokenReq, err := http.NewRequest("POST", "https://github.com/login/oauth/access_token", strings.NewReader(formData.Encode()))
 	if err != nil {
 		http.Error(w, "Failed to create request", http.StatusInternalServerError)
 		return
@@ -188,21 +266,44 @@ func GitHubOAuthHandler(w http.ResponseWriter, r *http.Request) {
 	client := &http.Client{}
 	tokenResp, err := client.Do(tokenReq)
 	if err != nil {
-		log.Printf("Error exchanging code for token: %v", err)
-		http.Error(w, "Failed to exchange code", http.StatusInternalServerError)
+		log.Printf("❌ Error exchanging code for token: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to exchange code: %v", err), http.StatusInternalServerError)
 		return
 	}
 	defer tokenResp.Body.Close()
+
+	// Check if token exchange was successful
+	if tokenResp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(tokenResp.Body)
+		log.Printf("❌ GitHub token exchange failed with status %d: %s", tokenResp.StatusCode, string(bodyBytes))
+		http.Error(w, fmt.Sprintf("Token exchange failed: %s", string(bodyBytes)), http.StatusBadRequest)
+		return
+	}
 
 	var tokenData struct {
 		AccessToken string `json:"access_token"`
 		TokenType   string `json:"token_type"`
 		Scope       string `json:"scope"`
+		Error       string `json:"error"`
+		ErrorDesc   string `json:"error_description"`
 	}
 
 	if err := json.NewDecoder(tokenResp.Body).Decode(&tokenData); err != nil {
-		log.Printf("Error decoding token response: %v", err)
-		http.Error(w, "Failed to decode token", http.StatusInternalServerError)
+		log.Printf("❌ Error decoding token response: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to decode token: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Check for OAuth errors in response
+	if tokenData.Error != "" {
+		log.Printf("❌ GitHub OAuth error: %s - %s", tokenData.Error, tokenData.ErrorDesc)
+		http.Error(w, fmt.Sprintf("OAuth error: %s", tokenData.ErrorDesc), http.StatusBadRequest)
+		return
+	}
+
+	if tokenData.AccessToken == "" {
+		log.Printf("❌ No access token received from GitHub")
+		http.Error(w, "No access token received", http.StatusInternalServerError)
 		return
 	}
 

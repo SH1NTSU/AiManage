@@ -12,8 +12,9 @@ import ModelDetail from "./pages/ModelDetail";
 import Statistics from "./pages/Statistics";
 import Settings from "./pages/Settings";
 import Pricing from "./pages/Pricing";
-import HuggingFace from "./pages/HuggingFace";
+// import HuggingFace from "./pages/HuggingFace";
 import Auth from "./pages/Auth";
+import AuthCallback from "./pages/AuthCallback";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./context/authContext";
 import { ModelProvider } from "./context/modelContext";
@@ -42,6 +43,7 @@ const App = () => (
 		<Routes>
 		  {/* Public */}
 		  <Route path="/auth" element={<Auth />} />
+		  <Route path="/auth/callback/:provider" element={<AuthCallback />} />
 
 		  {/* Protected */}
 		  <Route
@@ -98,6 +100,7 @@ const App = () => (
 		    }
 		  />
 
+		  {/* HuggingFace integration - commented out
 		  <Route
 		    path="/huggingface"
 		    element={
@@ -106,6 +109,7 @@ const App = () => (
 		      </ProtectedRoute>
 		    }
 		  />
+		  */}
 
 		  <Route path="*" element={<NotFound />} />
 		</Routes>
