@@ -108,17 +108,17 @@ jobs:
             echo ${{ secrets.GITHUB_TOKEN }} | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
             # Pull latest images
-            docker compose pull
+            docker compose -f docker-compose.prod.yml pull
 
             # Restart services
-            docker compose down
-            docker compose up -d
+            docker compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml up -d
 
             # Clean up old images
             docker image prune -af
 
             # Show running containers
-            docker compose ps
+            docker compose -f docker-compose.prod.yml ps
 
       - name: Verify deployment
         uses: appleboy/ssh-action@v1.0.3
@@ -131,11 +131,11 @@ jobs:
             cd ${{ secrets.DEPLOY_PATH || '/opt/aimanage' }}
 
             # Check if containers are running
-            if [ $(docker compose ps -q | wc -l) -eq 3 ]; then
+            if [ $(docker compose -f docker-compose.prod.yml ps -q | wc -l) -eq 3 ]; then
               echo "✅ All containers are running"
               exit 0
             else
               echo "❌ Some containers failed to start"
-              docker compose logs --tail=50
+              docker compose -f docker-compose.prod.yml logs --tail=50
               exit 1
             fi
