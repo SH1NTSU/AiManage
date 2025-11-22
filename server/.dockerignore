@@ -1,0 +1,24 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+server
+
+# Test files
+*_test.go
+
+# IDE
+.vscode
+.idea
+
+# Environment
+.env
+.env.local
+
+# Documentation
+*.md
+
+# Temporary
+tmp
