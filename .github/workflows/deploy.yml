@@ -8,8 +8,10 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME_SERVER: ${{ github.repository }}/server
-  IMAGE_NAME_APP: ${{ github.repository }}/app
+  # GitHub repository name must be lowercase for Docker
+  REPO_LOWERCASE: sh1ntsu/aimanage
+  IMAGE_NAME_SERVER: sh1ntsu/aimanage/server
+  IMAGE_NAME_APP: sh1ntsu/aimanage/app
 
 jobs:
   build-and-push:
