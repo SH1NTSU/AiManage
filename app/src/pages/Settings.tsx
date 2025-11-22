@@ -17,6 +17,8 @@ import { AuthContext } from "@/context/authContext";
 import { SubscriptionContext } from "@/context/subscriptionContext";
 import { useToast } from "@/hooks/use-toast";
 import axios from "axios";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8081";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -81,7 +83,7 @@ const Settings = () => {
         const token = localStorage.getItem("token");
         if (!token) return;
 
-        const response = await axios.get("http://localhost:8081/v1/me", {
+        const response = await axios.get(`${API_URL}/v1/me`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -146,7 +148,7 @@ const Settings = () => {
       }
 
       const response = await axios.post(
-        "http://localhost:8081/v1/regenerate-api-key",
+        `${API_URL}/v1/regenerate-api-key`,
         {},
         {
           headers: { Authorization: `Bearer ${token}` },
@@ -178,13 +180,35 @@ const Settings = () => {
       description: "Training agent package is downloading...",
     });
 
-    // Create a temporary link and trigger download
-    const link = document.createElement('a');
-    link.href = "http://localhost:8081/uploads/training-agent.zip";
-    link.setAttribute('download', 'training-agent.zip');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Direct download using window.open or fetch
+    const downloadUrl = `${API_URL}/uploads/training-agent.zip`;
+
+    // Try using fetch to download the file
+    fetch(downloadUrl)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Download failed');
+        }
+        return response.blob();
+      })
+      .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'training-agent.zip';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      })
+      .catch(error => {
+        console.error('Download error:', error);
+        toast({
+          title: "Download Failed",
+          description: "Could not download the training agent. Please try again.",
+          variant: "destructive",
+        });
+      });
   };
 
   const handleUpgrade = async (tier: string) => {
@@ -207,7 +231,7 @@ const Settings = () => {
         description: "Please wait...",
       });
 
-      const response = await axios.post("http://localhost:8081/v1/subscription/checkout", {
+      const response = await axios.post(`${API_URL}/v1/subscription/checkout`, {
         tier: tier,
       }, {
         headers: { Authorization: `Bearer ${token}` }

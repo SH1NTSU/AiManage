@@ -37,13 +37,15 @@ pip install websockets torch
 python train_agent.py --api-key YOUR_API_KEY
 ```
 
-Or connect to custom server:
+Or connect to a different server:
 
 ```bash
 python train_agent.py \
   --api-key YOUR_API_KEY \
-  --server-url ws://your-server.com
+  --server-url ws://your-server.com:8081
 ```
+
+**Note:** The default server is `ws://109.199.115.1:8081` - you only need to specify `--server-url` if connecting to a different server.
 
 ### 3. Start Training
 

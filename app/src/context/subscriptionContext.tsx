@@ -1,6 +1,8 @@
 import { createContext, useState, useEffect, ReactNode } from "react";
 import axios from "axios";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8081";
+
 export interface Subscription {
   tier: "free" | "basic" | "pro" | "enterprise";
   status: "active" | "canceled" | "expired" | "past_due";
@@ -51,7 +53,7 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      const response = await axios.get("http://localhost:8081/v1/subscription", {
+      const response = await axios.get(`${API_URL}/v1/subscription`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSubscription(response.data.subscription);
@@ -78,7 +80,7 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      const response = await axios.get("http://localhost:8081/v1/agent/status", {
+      const response = await axios.get(`${API_URL}/v1/agent/status`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setIsAgentConnected(response.data.connected);
@@ -102,7 +104,9 @@ export const SubscriptionProvider = ({ children }: { children: ReactNode }) => {
     const token = localStorage.getItem("token");
     if (!token) return;
 
-    const ws = new WebSocket(`ws://localhost:8081/v1/ws?token=${token}`);
+    const wsProtocol = API_URL.startsWith('https') ? 'wss' : 'ws';
+    const wsHost = API_URL.replace(/^https?:\/\//, '');
+    const ws = new WebSocket(`${wsProtocol}://${wsHost}/v1/ws?token=${token}`);
 
     ws.onopen = () => {
       // Fetch agent status again when WebSocket connects to ensure we have the latest state

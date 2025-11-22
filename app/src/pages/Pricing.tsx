@@ -6,6 +6,8 @@ import axios from "axios";
 import { useToast } from "@/hooks/use-toast";
 import { SubscriptionContext } from "@/context/subscriptionContext";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8081";
+
 interface PricingTier {
   tier: string;
   name: string;
@@ -28,7 +30,7 @@ const Pricing = () => {
 
   const fetchPricing = async () => {
     try {
-      const response = await axios.get("http://localhost:8081/v1/pricing");
+      const response = await axios.get(`${API_URL}/v1/pricing`);
       setPricing(response.data.pricing);
     } catch (error) {
       console.error("Failed to fetch pricing:", error);
@@ -42,7 +44,7 @@ const Pricing = () => {
       const token = localStorage.getItem("token");
       if (!token) return;
 
-      const response = await axios.get("http://localhost:8081/v1/subscription", {
+      const response = await axios.get(`${API_URL}/v1/subscription`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setCurrentTier(response.data.subscription.tier);
@@ -76,7 +78,7 @@ const Pricing = () => {
         description: "Please wait...",
       });
 
-      const response = await axios.post("http://localhost:8081/v1/subscription/checkout", {
+      const response = await axios.post(`${API_URL}/v1/subscription/checkout`, {
         tier: tier,
       }, {
         headers: { Authorization: `Bearer ${token}` }

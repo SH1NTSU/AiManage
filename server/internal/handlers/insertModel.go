@@ -25,7 +25,7 @@ func InsertHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Parse form
-	err := r.ParseMultipartForm(200 << 20) // 200 MB for bigger zips
+	err := r.ParseMultipartForm(500 << 20) // 500 MB for bigger zips
 	if err != nil {
 		log.Println("❌ ParseMultipartForm error:", err)
 		http.Error(w, "Could not parse multipart form: "+err.Error(), http.StatusBadRequest)

@@ -18,6 +18,8 @@ import {
 import { TrainingContext } from "@/context/trainingContext";
 import { ModelContext } from "@/context/modelContext";
 import { SubscriptionContext } from "@/context/subscriptionContext";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8081";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SmoothProgressBar } from "@/components/SmoothProgressBar";
@@ -64,7 +66,7 @@ const Statistics = () => {
       return;
     }
 
-    const downloadUrl = `http://localhost:8081/v1/downloadModel?model_id=${modelId}`;
+    const downloadUrl = `${API_URL}/v1/downloadModel?model_id=${modelId}`;
 
     // Create a temporary link and trigger download
     const link = document.createElement('a');

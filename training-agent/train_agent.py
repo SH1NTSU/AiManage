@@ -16,7 +16,7 @@ import time
 import aiohttp
 
 class TrainingAgent:
-    def __init__(self, api_key: str, server_url: str = "ws://localhost:8081"):
+    def __init__(self, api_key: str, server_url: str = "ws://109.199.115.1:8081"):
         self.api_key = api_key
         self.server_url = server_url.replace("http://", "ws://").replace("https://", "wss://")
         self.websocket = None
@@ -459,8 +459,8 @@ def main():
     parser.add_argument('--api-key', type=str, required=True,
                         help='Your API key from the platform')
     parser.add_argument('--server-url', type=str,
-                        default='ws://localhost:8081',
-                        help='Server URL (default: ws://localhost:8081)')
+                        default='ws://109.199.115.1:8081',
+                        help='Server URL (default: ws://109.199.115.1:8081)')
 
     args = parser.parse_args()
 

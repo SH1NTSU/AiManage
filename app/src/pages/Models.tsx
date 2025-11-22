@@ -22,6 +22,8 @@ import { SubscriptionContext } from "@/context/subscriptionContext";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8081";
+
 const Models = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [publishDialogOpen, setPublishDialogOpen] = useState(false);
@@ -64,7 +66,7 @@ const Models = () => {
       const token = localStorage.getItem("token");
       if (!token) return;
 
-      const response = await fetch("http://localhost:8081/v1/my-published-models", {
+      const response = await fetch(`${API_URL}/v1/my-published-models`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -180,7 +182,7 @@ const Models = () => {
       if (publishForm.framework) payload.framework = publishForm.framework;
 
 
-      const response = await fetch("http://localhost:8081/v1/publish", {
+      const response = await fetch(`${API_URL}/v1/publish`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -238,7 +240,7 @@ const Models = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:8081/v1/published-models/${publishedModelId}/unpublish`, {
+      const response = await fetch(`${API_URL}/v1/published-models/${publishedModelId}/unpublish`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -552,7 +554,7 @@ const Models = () => {
                 {model.picture ? (
                   <div className="w-16 h-16 rounded-xl overflow-hidden shadow-lg ring-2 ring-primary/20 group-hover:ring-primary/40 transition-all">
                     <img
-                      src={`http://localhost:8081${model.picture}`}
+                      src={`${API_URL}${model.picture}`}
                       alt={model.name}
                       className="w-full h-full object-cover"
                     />
@@ -646,7 +648,7 @@ const Models = () => {
                       {model.picture ? (
                         <div className="w-16 h-16 rounded-xl overflow-hidden shadow-lg ring-2 ring-primary/20 group-hover:ring-primary/40 transition-all">
                           <img
-                            src={`http://localhost:8081${model.picture}`}
+                            src={`${API_URL}${model.picture}`}
                             alt={model.name}
                             className="w-full h-full object-cover"
                           />

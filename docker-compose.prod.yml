@@ -26,6 +26,7 @@ services:
     container_name: aimanage-server
     environment:
       # Database
+      DB_URI: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_db}?sslmode=disable
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${POSTGRES_USER:-postgres}
@@ -37,9 +38,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
 
       # Stripe
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
-      STRIPE_MOCK_MODE: ${STRIPE_MOCK_MODE:-false}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_MOCK_MODE: ${STRIPE_MOCK_MODE:-true}
 
       # OAuth
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
@@ -50,11 +51,14 @@ services:
       # HuggingFace
       HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN}
 
+      # Gemini AI
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+
       # App
       PORT: 8081
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
     ports:
-      - "127.0.0.1:8081:8081"
+      - "8081:8081"
     depends_on:
       postgres:
         condition: service_healthy

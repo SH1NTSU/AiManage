@@ -14,6 +14,8 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { CreditCard, Lock, CheckCircle2, Loader2 } from "lucide-react";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8081";
+
 interface StripeCheckoutProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -55,7 +57,7 @@ const StripeCheckout = ({
         throw new Error("Authentication required");
       }
 
-      const intentResponse = await fetch("http://localhost:8081/v1/published-models/payment-intent", {
+      const intentResponse = await fetch(`${API_URL}/v1/published-models/payment-intent`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -93,7 +95,7 @@ const StripeCheckout = ({
       }
 
       // Step 4: Confirm purchase on backend
-      const confirmResponse = await fetch("http://localhost:8081/v1/published-models/confirm-purchase", {
+      const confirmResponse = await fetch(`${API_URL}/v1/published-models/confirm-purchase`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

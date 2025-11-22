@@ -3,6 +3,8 @@ import { createContext, useState, useEffect, type ReactNode } from "react";
 import { jwtDecode } from "jwt-decode";
 import { useNavigate } from "react-router-dom";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8081";
+
 interface TokenPayload { exp: number; }
 interface AuthContextType {
   token: string | null;
@@ -40,7 +42,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     refreshing = true;
     refreshPromise = (async () => {
       try {
-        const res = await axios.get("http://localhost:8081/v1/refresh", { withCredentials: true });
+        const res = await axios.get(`${API_URL}/v1/refresh`, { withCredentials: true });
         setToken(res.data.token);
         localStorage.setItem("token", res.data.token);
       } catch {
@@ -71,7 +73,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (email: string, password: string) => {
     setLoading(true); setError(null);
     try {
-      const res = await axios.post("http://localhost:8081/v1/login", { email, password });
+      const res = await axios.post(`${API_URL}/v1/login`, { email, password });
           setToken(res.data.token); 
 
 	  localStorage.setItem("token", res.data.token);
@@ -83,7 +85,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const register = async (email: string, password: string, username: string) => {
     setLoading(true); setError(null);
     try {
-      await axios.post("http://localhost:8081/v1/register", { email, password, username });
+      await axios.post(`${API_URL}/v1/register`, { email, password, username });
     }
     catch (err: any) {
       const errorMessage = err.response?.data || "Register failed";
@@ -96,7 +98,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loginWithGoogle = async (code: string) => {
     setLoading(true); setError(null);
     try {
-      const res = await axios.post("http://localhost:8081/v1/auth/google", { code });
+      const res = await axios.post(`${API_URL}/v1/auth/google`, { code });
       setToken(res.data.token);
       localStorage.setItem("token", res.data.token);
       navigate("/");
@@ -111,7 +113,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loginWithGitHub = async (code: string) => {
     setLoading(true); setError(null);
     try {
-      const res = await axios.post("http://localhost:8081/v1/auth/github", { code });
+      const res = await axios.post(`${API_URL}/v1/auth/github`, { code });
       setToken(res.data.token);
       localStorage.setItem("token", res.data.token);
       navigate("/");
@@ -126,7 +128,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const loginWithApple = async (code: string, idToken?: string) => {
     setLoading(true); setError(null);
     try {
-      const res = await axios.post("http://localhost:8081/v1/auth/apple", { code, id_token: idToken });
+      const res = await axios.post(`${API_URL}/v1/auth/apple`, { code, id_token: idToken });
       setToken(res.data.token);
       localStorage.setItem("token", res.data.token);
       navigate("/");

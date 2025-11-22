@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8081";
+
 const Community = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
@@ -97,7 +99,7 @@ const Community = () => {
         return;
       }
 
-      const response = await fetch("http://localhost:8081/v1/published-models", {
+      const response = await fetch(`${API_URL}/v1/published-models`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -230,7 +232,7 @@ const Community = () => {
                   {model.picture ? (
                     <div className="w-16 h-16 rounded-xl overflow-hidden shadow-lg ring-2 ring-primary/20 group-hover:ring-primary/40 transition-all">
                       <img
-                        src={`http://localhost:8081${model.picture}`}
+                        src={`${API_URL}${model.picture}`}
                         alt={model.name}
                         className="w-full h-full object-cover"
                       />

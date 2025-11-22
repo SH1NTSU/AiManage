@@ -28,6 +28,8 @@ import { useToast } from "@/hooks/use-toast";
 import StripeProvider from "@/components/StripeProvider";
 import StripeCheckout from "@/components/StripeCheckout";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8081";
+
 interface PublishedModel {
   id: number;
   model_id: number;
@@ -111,7 +113,7 @@ const ModelDetail = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:8081/v1/published-models/${id}`, {
+      const response = await fetch(`${API_URL}/v1/published-models/${id}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -140,7 +142,7 @@ const ModelDetail = () => {
       const token = localStorage.getItem("token");
       if (!token) return;
 
-      const response = await fetch(`http://localhost:8081/v1/published-models/${id}/likes`, {
+      const response = await fetch(`${API_URL}/v1/published-models/${id}/likes`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -161,7 +163,7 @@ const ModelDetail = () => {
       const token = localStorage.getItem("token");
       if (!token) return;
 
-      const response = await fetch(`http://localhost:8081/v1/published-models/${id}/comments`, {
+      const response = await fetch(`${API_URL}/v1/published-models/${id}/comments`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -195,7 +197,7 @@ const ModelDetail = () => {
       }
 
       const method = liked ? "DELETE" : "POST";
-      const response = await fetch(`http://localhost:8081/v1/published-models/${id}/like`, {
+      const response = await fetch(`${API_URL}/v1/published-models/${id}/like`, {
         method,
         headers: {
           Authorization: `Bearer ${token}`,
@@ -239,7 +241,7 @@ const ModelDetail = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:8081/v1/published-models/${id}/comments`, {
+      const response = await fetch(`${API_URL}/v1/published-models/${id}/comments`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -283,7 +285,7 @@ const ModelDetail = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:8081/v1/comments/${commentId}`, {
+      const response = await fetch(`${API_URL}/v1/comments/${commentId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -338,7 +340,7 @@ const ModelDetail = () => {
         return;
       }
 
-      const response = await fetch(`http://localhost:8081/v1/published-models/${id}/download`, {
+      const response = await fetch(`${API_URL}/v1/published-models/${id}/download`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -477,7 +479,7 @@ const ModelDetail = () => {
                 {model.picture ? (
                   <div className="w-32 h-32 rounded-xl overflow-hidden shadow-lg ring-2 ring-primary/20">
                     <img
-                      src={`http://localhost:8081${model.picture}`}
+                      src={`${API_URL}${model.picture}`}
                       alt={model.name}
                       className="w-full h-full object-cover"
                     />

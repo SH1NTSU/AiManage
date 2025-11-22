@@ -2,6 +2,8 @@ import axios from "axios";
 import { createContext, type ReactNode, useEffect, useState, useContext } from "react";
 import { AuthContext } from "./authContext";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8081";
+
 interface Model {
   id: number;
   user_id: number;
@@ -72,7 +74,7 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const res = await axios.post(
-        "http://localhost:8081/v1/insert",
+        `${API_URL}/v1/insert`,
         formData,
         {
           headers: {
@@ -121,7 +123,7 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
 
 
       const res = await axios.delete(
-        "http://localhost:8081/v1/deleteModel",
+        `${API_URL}/v1/deleteModel`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -166,7 +168,7 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
 
       setLoading(true);
       try {
-        const res = await axios.get("http://localhost:8081/v1/getModels", {
+        const res = await axios.get(`${API_URL}/v1/getModels`, {
           headers: {
             Authorization: `Bearer ${token}`
           }
@@ -205,7 +207,9 @@ export const ModelProvider = ({ children }: { children: ReactNode }) => {
       try {
         // Use token from context (already checked above)
         // Include JWT token as query parameter
-        const wsUrl = `ws://localhost:8081/v1/ws?token=${encodeURIComponent(token)}`;
+        const wsProtocol = API_URL.startsWith('https') ? 'wss' : 'ws';
+        const wsHost = API_URL.replace(/^https?:\/\//, '');
+        const wsUrl = `${wsProtocol}://${wsHost}/v1/ws?token=${encodeURIComponent(token)}`;
         socket = new WebSocket(wsUrl);
 
         socket.onopen = () => {
