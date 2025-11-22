@@ -5,16 +5,6 @@
 
 set -e
 
-echo "🚀 AiManage VPS Setup Script"
-echo "============================"
-echo ""
-
-# Check if running as root
-if [ "$EUID" -eq 0 ]; then
-    echo "❌ Please don't run this script as root"
-    exit 1
-fi
-
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -34,6 +24,43 @@ print_error() {
     echo -e "${RED}✗${NC} $1"
 }
 
+echo "🚀 AiManage VPS Setup Script"
+echo "============================"
+echo ""
+
+# Check if running as root and create non-root user if needed
+if [ "$EUID" -eq 0 ]; then
+    echo -e "${YELLOW}⚠${NC} Running as root. Creating a non-root user for better security..."
+
+    # Check if deploy user exists
+    if id "deploy" &>/dev/null; then
+        echo -e "${GREEN}✓${NC} User 'deploy' already exists"
+    else
+        echo -e "${GREEN}✓${NC} Creating user 'deploy'..."
+        useradd -m -s /bin/bash deploy
+        usermod -aG sudo deploy
+
+        # Set password
+        echo "Please set a password for the 'deploy' user:"
+        passwd deploy
+
+        echo -e "${GREEN}✓${NC} User 'deploy' created successfully"
+    fi
+
+    # Copy this script to deploy user's home and re-run as deploy
+    SCRIPT_PATH="/home/deploy/vps-setup.sh"
+    cp "$0" "$SCRIPT_PATH"
+    chown deploy:deploy "$SCRIPT_PATH"
+    chmod +x "$SCRIPT_PATH"
+
+    echo -e "${GREEN}✓${NC} Switching to 'deploy' user to continue setup..."
+    su - deploy -c "bash $SCRIPT_PATH"
+
+    echo ""
+    echo -e "${GREEN}✓${NC} Setup completed. You can now login as 'deploy' user:"
+    echo "  su - deploy"
+    exit 0
+fi
 # Check system
 echo "📋 System Information:"
 echo "OS: $(lsb_release -d | cut -f2)"
