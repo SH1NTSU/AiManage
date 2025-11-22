@@ -12,10 +12,11 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8081";
+
 const items = [
   { title: "Models", url: "/", icon: Brain },
   { title: "Community", url: "/community", icon: Store },
-  { title: "HuggingFace", url: "/huggingface", icon: Sparkles },
   { title: "Statistics", url: "/statistics", icon: BarChart3 },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
@@ -30,7 +31,7 @@ export function AppSidebar() {
         const token = localStorage.getItem("token");
         if (!token) return;
 
-        const response = await fetch("http://localhost:8081/v1/me", {
+        const response = await fetch(`${API_URL}/v1/me`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
