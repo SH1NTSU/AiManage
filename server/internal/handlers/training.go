@@ -242,7 +242,11 @@ func (h *TrainingHandler) GetTrainingProgress(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	trainer := h.agent.GetTrainer()
+	trainer := GetGlobalTrainer()
+	if trainer == nil {
+		http.Error(w, "Training system not initialized", http.StatusInternalServerError)
+		return
+	}
 	progress, err := trainer.GetProgress(trainingID)
 	if err != nil {
 		println("❌ [PROGRESS] Training not found:", trainingID)
@@ -292,7 +296,17 @@ func (h *TrainingHandler) getAllTrainings(w http.ResponseWriter, r *http.Request
 	}
 
 	// Filter trainings by user ID
-	trainer := h.agent.GetTrainer()
+	trainer := GetGlobalTrainer()
+	if trainer == nil {
+		// Return empty list if trainer not initialized
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success":   true,
+			"trainings": []interface{}{},
+			"count":     0,
+		})
+		return
+	}
 	trainings := trainer.GetTrainingsByUserID(int(userID))
 
 	w.Header().Set("Content-Type", "application/json")

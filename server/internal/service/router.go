@@ -27,6 +27,12 @@ func NewRouter() http.Handler {
 		// You might want to add proper logging here
 	}
 
+	// Initialize standalone trainer for remote training support (always needed)
+	// Even without AI Agent, we need trainer for tracking remote training progress
+	navigator := aiAgent.NewDirectoryNavigator("./uploads")
+	trainer := aiAgent.NewTrainer(navigator)
+	handlers.SetGlobalTrainer(trainer)
+
 	// Initialize Training Handler (always available, even without AI Agent)
 	trainingHandler := handlers.NewTrainingHandler(nil)
 
@@ -35,9 +41,6 @@ func NewRouter() http.Handler {
 	if aiAgentHandler != nil {
 		agent := aiAgentHandler.GetAgent()
 		deleteModelHandler = handlers.NewDeleteModelHandler(agent)
-
-		// Set global trainer for remote training support
-		handlers.SetGlobalTrainer(agent.GetTrainer())
 
 		// Set up broadcast callback for training updates
 		broadcaster := GetTrainingBroadcaster()

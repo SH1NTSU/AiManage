@@ -58,6 +58,11 @@ func SetGlobalTrainer(trainer *aiAgent.Trainer) {
 	globalTrainer = trainer
 }
 
+// GetGlobalTrainer returns the global trainer instance
+func GetGlobalTrainer() *aiAgent.Trainer {
+	return globalTrainer
+}
+
 // AgentWebSocketHandler handles WebSocket connections from training agents
 func AgentWebSocketHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("🔌 New agent connection attempt from %s", r.RemoteAddr)
