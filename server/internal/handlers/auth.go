@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"server/helpers"
+	"server/internal/email"
 	"server/internal/repository"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -68,8 +69,37 @@ func RegisterHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate verification token
+	token, err := helpers.GenerateRandomString(32)
+	if err != nil {
+		log.Printf("[REGISTER ERROR] Failed to generate verification token: %v", err)
+		http.Error(w, "Failed to generate verification token", http.StatusInternalServerError)
+		return
+	}
+
+	// Set token expiry (24 hours)
+	expiresAt := time.Now().Add(24 * time.Hour)
+
+	// Save token to database
+	err = repository.SetVerificationToken(r.Context(), rq.Email, token, expiresAt)
+	if err != nil {
+		log.Printf("[REGISTER ERROR] Failed to save verification token: %v", err)
+		// Continue without verification - user can request resend
+	}
+
+	// Send verification email (non-blocking)
+	emailService := email.NewEmailService()
+	go func() {
+		err := emailService.SendVerificationEmail(rq.Email, rq.Username, token)
+		if err != nil {
+			log.Printf("[REGISTER ERROR] Failed to send verification email: %v", err)
+		}
+	}()
+
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"message": "User registered"})
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "User registered. Please check your email to verify your account.",
+	})
 }
 
 
@@ -101,6 +131,19 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	log.Printf("[LOGIN] User found: %+v", *user)
+
+	// Check if email is verified
+	emailVerified, ok := (*user)["email_verified"].(bool)
+	if !ok {
+		log.Printf("[LOGIN ERROR] email_verified field type assertion failed")
+		emailVerified = false
+	}
+
+	if !emailVerified {
+		log.Printf("[LOGIN ERROR] Email not verified for: %s", rq.Email)
+		http.Error(w, "Email not verified. Please check your email for verification link.", http.StatusUnauthorized)
+		return
+	}
 
 	// Get password from user map
 	passwordHash, ok := (*user)["password"].(string)
@@ -188,4 +231,116 @@ func LoginHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	log.Printf("[LOGIN] Login successful for email: %s, userID: %d", rq.Email, userID)
+}
+
+// VerifyEmailHandler handles email verification via token
+func VerifyEmailHandler(w http.ResponseWriter, r *http.Request) {
+	// Get token from query parameter
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Verification token is required", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("[EMAIL VERIFICATION] Attempting to verify email with token")
+
+	// Verify the email using the token
+	user, err := repository.VerifyEmailByToken(r.Context(), token)
+	if err != nil {
+		log.Printf("[EMAIL VERIFICATION ERROR] %v", err)
+		http.Error(w, "Invalid or expired verification token", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("[EMAIL VERIFICATION] Email verified successfully for user: %v", (*user)["email"])
+
+	// Send welcome email (optional, non-blocking)
+	userEmail := (*user)["email"].(string)
+	username := (*user)["username"].(string)
+	emailService := email.NewEmailService()
+	go emailService.SendWelcomeEmail(userEmail, username)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Email verified successfully",
+		"email":   userEmail,
+	})
+}
+
+// ResendVerificationEmailHandler resends the verification email
+func ResendVerificationEmailHandler(w http.ResponseWriter, r *http.Request) {
+	var rq struct {
+		Email string `json:"email"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&rq); err != nil {
+		http.Error(w, "Couldn't decode request", http.StatusBadRequest)
+		return
+	}
+
+	if rq.Email == "" {
+		http.Error(w, "Email is required", http.StatusBadRequest)
+		return
+	}
+
+	log.Printf("[RESEND VERIFICATION] Resending verification email to: %s", rq.Email)
+
+	// Check if user exists
+	user, err := repository.GetUserByEmail(r.Context(), rq.Email)
+	if err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	if user == nil {
+		// Don't reveal whether email exists
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{"message": "If the email exists, a verification link has been sent"})
+		return
+	}
+
+	// Check if already verified
+	emailVerified, ok := (*user)["email_verified"].(bool)
+	if ok && emailVerified {
+		http.Error(w, "Email is already verified", http.StatusBadRequest)
+		return
+	}
+
+	// Generate new verification token
+	token, err := helpers.GenerateRandomString(32)
+	if err != nil {
+		log.Printf("[RESEND VERIFICATION ERROR] Failed to generate token: %v", err)
+		http.Error(w, "Failed to generate verification token", http.StatusInternalServerError)
+		return
+	}
+
+	// Set token expiry (24 hours)
+	expiresAt := time.Now().Add(24 * time.Hour)
+
+	// Save token to database
+	err = repository.SetVerificationToken(r.Context(), rq.Email, token, expiresAt)
+	if err != nil {
+		log.Printf("[RESEND VERIFICATION ERROR] Failed to save token: %v", err)
+		http.Error(w, "Failed to save verification token", http.StatusInternalServerError)
+		return
+	}
+
+	// Send verification email
+	username, _ := (*user)["username"].(string)
+	if username == "" {
+		username = rq.Email
+	}
+
+	emailService := email.NewEmailService()
+	err = emailService.SendVerificationEmail(rq.Email, username, token)
+	if err != nil {
+		log.Printf("[RESEND VERIFICATION ERROR] Failed to send email: %v", err)
+		http.Error(w, "Failed to send verification email", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[RESEND VERIFICATION] Verification email sent to: %s", rq.Email)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Verification email sent"})
 }

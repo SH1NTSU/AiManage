@@ -175,6 +175,9 @@ func CreateCheckoutSessionHandler(w http.ResponseWriter, r *http.Request) {
 	params := &stripe.CheckoutSessionParams{
 		Customer: stripe.String(stripeCustomerID),
 		Mode:     stripe.String(string(stripe.CheckoutSessionModeSubscription)),
+		PaymentMethodTypes: stripe.StringSlice([]string{
+			"card",
+		}),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{
 			{
 				PriceData: &stripe.CheckoutSessionLineItemPriceDataParams{

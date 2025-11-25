@@ -265,7 +265,8 @@ func GetUserByEmail(ctx context.Context, email string) (*map[string]interface{},
 
 	query := `SELECT id, email, password, username, api_key, created_at, updated_at,
 		subscription_tier, subscription_status, training_credits,
-		stripe_customer_id, stripe_subscription_id, subscription_start_date, subscription_end_date
+		stripe_customer_id, stripe_subscription_id, subscription_start_date, subscription_end_date,
+		email_verified, verification_token, verification_token_expires_at
 		FROM users WHERE email = $1`
 
 	rows, err := models.Pool.Query(ctx, query, email)
@@ -1322,6 +1323,118 @@ func GetSessionByRefreshToken(ctx context.Context, refreshToken string) (*map[st
 
 	if !rows.Next() {
 		return nil, nil // Session not found or expired
+	}
+
+	values, err := rows.Values()
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan row: %w", err)
+	}
+
+	fieldDescriptions := rows.FieldDescriptions()
+	row := make(map[string]interface{})
+	for i, v := range values {
+		row[string(fieldDescriptions[i].Name)] = v
+	}
+
+	return &row, nil
+}
+
+// SetVerificationToken sets the verification token and expiry for a user
+func SetVerificationToken(ctx context.Context, email, token string, expiresAt time.Time) error {
+	if models.Pool == nil {
+		return fmt.Errorf("database connection not initialized")
+	}
+
+	query := `
+		UPDATE users
+		SET verification_token = $1, verification_token_expires_at = $2
+		WHERE email = $3
+	`
+
+	_, err := models.Pool.Exec(ctx, query, token, expiresAt, email)
+	if err != nil {
+		return fmt.Errorf("failed to set verification token: %w", err)
+	}
+
+	log.Printf("✅ Set verification token for user: %s", email)
+	return nil
+}
+
+// VerifyEmailByToken verifies a user's email using the verification token
+func VerifyEmailByToken(ctx context.Context, token string) (*map[string]interface{}, error) {
+	if models.Pool == nil {
+		return nil, fmt.Errorf("database connection not initialized")
+	}
+
+	// First, check if the token is valid and not expired
+	query := `
+		SELECT id, email, username, verification_token_expires_at
+		FROM users
+		WHERE verification_token = $1 AND verification_token_expires_at > NOW()
+	`
+
+	rows, err := models.Pool.Query(ctx, query, token)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, fmt.Errorf("invalid or expired verification token")
+	}
+
+	values, err := rows.Values()
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan row: %w", err)
+	}
+
+	fieldDescriptions := rows.FieldDescriptions()
+	row := make(map[string]interface{})
+	for i, v := range values {
+		row[string(fieldDescriptions[i].Name)] = v
+	}
+
+	// Update the user to mark email as verified and clear the token
+	email, ok := row["email"].(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid email in user record")
+	}
+
+	updateQuery := `
+		UPDATE users
+		SET email_verified = true, verification_token = NULL, verification_token_expires_at = NULL
+		WHERE email = $1
+	`
+
+	_, err = models.Pool.Exec(ctx, updateQuery, email)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update email verification status: %w", err)
+	}
+
+	log.Printf("✅ Email verified for user: %s", email)
+	return &row, nil
+}
+
+// GetUserByVerificationToken retrieves a user by verification token
+func GetUserByVerificationToken(ctx context.Context, token string) (*map[string]interface{}, error) {
+	if models.Pool == nil {
+		return nil, fmt.Errorf("database connection not initialized")
+	}
+
+	query := `
+		SELECT id, email, username, email_verified, verification_token_expires_at
+		FROM users
+		WHERE verification_token = $1
+	`
+
+	rows, err := models.Pool.Query(ctx, query, token)
+	if err != nil {
+		return nil, fmt.Errorf("query failed: %w", err)
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		return nil, nil // Token not found
 	}
 
 	values, err := rows.Values()

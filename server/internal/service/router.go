@@ -59,6 +59,10 @@ func NewRouter() http.Handler {
 		r.Post("/login", handlers.LoginHandler)
 		r.Get("/refresh", handlers.RefreshHandler)
 
+		// Email verification routes
+		r.Get("/verify-email", handlers.VerifyEmailHandler)
+		r.Post("/resend-verification", handlers.ResendVerificationEmailHandler)
+
 		// OAuth routes
 		r.Post("/auth/google", handlers.GoogleOAuthHandler)
 		r.Post("/auth/github", handlers.GitHubOAuthHandler)

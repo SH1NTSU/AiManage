@@ -13,21 +13,9 @@ const AuthCallback = () => {
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Immediate log to verify component is rendering
-  useEffect(() => {
-    console.log("🚀 AuthCallback component mounted");
-    console.log("📋 Provider from URL:", provider);
-    console.log("📋 Search params:", Object.fromEntries(searchParams.entries()));
-    console.log("📋 Current URL:", window.location.href);
-  }, []);
-
   useEffect(() => {
     const processCallback = async () => {
       try {
-        console.log("🔄 Processing OAuth callback...");
-        console.log("📋 Provider:", provider);
-        console.log("📋 URL params:", Object.fromEntries(searchParams.entries()));
-
         if (!provider || (provider !== "google" && provider !== "github")) {
           console.error("❌ Invalid provider:", provider);
           setStatus("error");
@@ -43,10 +31,6 @@ const AuthCallback = () => {
         const code = searchParams.get("code");
         const state = searchParams.get("state");
         const error = searchParams.get("error");
-
-        console.log("📋 Code:", code ? `${code.substring(0, 10)}...` : "missing");
-        console.log("📋 State:", state ? `${state.substring(0, 10)}...` : "missing");
-        console.log("📋 Error:", error || "none");
 
         if (error) {
           console.error("❌ OAuth error from provider:", error);
@@ -72,14 +56,12 @@ const AuthCallback = () => {
           return;
         }
 
-        console.log("🔄 Calling handleCallback...");
         const { token } = await handleCallback(provider, code, state);
-        
+
         if (!token) {
           throw new Error("No token received from backend");
         }
 
-        console.log("✅ Token received, storing...");
         // Store token
         localStorage.setItem("token", token);
         

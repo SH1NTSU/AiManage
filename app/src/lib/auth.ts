@@ -72,12 +72,7 @@ function generateState(): string {
 // Auth.js-style signIn function
 export async function signIn(provider: "google" | "github") {
   const providerConfig = providers[provider];
-  
-  // Debug logging
-  console.log(`🔐 Attempting ${provider} OAuth sign in`);
-  console.log(`📋 Client ID: ${providerConfig.clientId ? providerConfig.clientId.substring(0, 10) + '...' : 'NOT SET'}`);
-  console.log(`🔗 Redirect URI: ${providerConfig.redirectUri}`);
-  
+
   if (!providerConfig.clientId) {
     const errorMsg = `${provider} OAuth is not configured. Please check VITE_${provider.toUpperCase()}_CLIENT_ID in your .env file.`;
     console.error(`❌ ${errorMsg}`);
@@ -86,7 +81,6 @@ export async function signIn(provider: "google" | "github") {
 
   const state = generateState();
   sessionStorage.setItem(`oauth_state_${provider}`, state);
-  console.log(`✅ State generated and stored: ${state.substring(0, 10)}...`);
 
   const params = new URLSearchParams({
     client_id: providerConfig.clientId,
@@ -97,7 +91,6 @@ export async function signIn(provider: "google" | "github") {
   });
 
   const authUrl = `${providerConfig.authorization.url}?${params.toString()}`;
-  console.log(`🚀 Redirecting to: ${providerConfig.authorization.url}`);
   window.location.href = authUrl;
 }
 
@@ -107,34 +100,26 @@ export async function handleCallback(
   code: string,
   state: string
 ): Promise<{ token: string; refresh_token: string }> {
-  console.log(`🔐 Verifying OAuth callback for ${provider}...`);
-  
   // Verify state
   const storedState = sessionStorage.getItem(`oauth_state_${provider}`);
-  console.log(`📋 Stored state: ${storedState ? storedState.substring(0, 10) + '...' : 'NOT FOUND'}`);
-  console.log(`📋 Received state: ${state.substring(0, 10)}...`);
 
   if (!storedState || storedState !== state) {
     console.error(`❌ State mismatch! Stored: ${storedState}, Received: ${state}`);
     throw new Error("Invalid state parameter - possible CSRF attack or session expired");
   }
-  
+
   // Remove state after verification
   sessionStorage.removeItem(`oauth_state_${provider}`);
-  console.log(`✅ State verified successfully`);
 
   // Exchange code for token via backend (Auth.js style)
   const providerConfig = providers[provider];
-  console.log(`🔄 Exchanging ${provider} authorization code for token...`);
-  console.log(`📡 Backend URL: ${API_URL}/v1/auth/${provider}`);
-  console.log(`🔗 Redirect URI: ${providerConfig.redirectUri}`);
-  
+
   const response = await fetch(`${API_URL}/v1/auth/${provider}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ 
+    body: JSON.stringify({
       code,
       redirect_uri: providerConfig.redirectUri, // Send redirect URI for backend validation
     }),
@@ -146,8 +131,6 @@ export async function handleCallback(
     console.error(`❌ Error details: ${error}`);
     throw new Error(`OAuth callback failed: ${error}`);
   }
-  
-  console.log(`✅ Token exchange successful`);
 
   const data = await response.json();
   return {

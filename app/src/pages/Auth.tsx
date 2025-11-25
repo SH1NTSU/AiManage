@@ -26,20 +26,6 @@ const Auth = () => {
   const hasGitHubOAuth = providers.github.clientId && providers.github.clientId !== '';
   const hasAnyOAuth = hasGoogleOAuth || hasGitHubOAuth;
 
-  // Debug: Log OAuth configuration status
-  useEffect(() => {
-    console.log('🔍 OAuth Configuration Check:');
-    console.log(`  Google: ${hasGoogleOAuth ? '✅ Configured' : '❌ Not configured'}`);
-    console.log(`  GitHub: ${hasGitHubOAuth ? '✅ Configured' : '❌ Not configured'}`);
-    if (hasGoogleOAuth) {
-      console.log(`  Google Client ID: ${providers.google.clientId.substring(0, 10)}...`);
-      console.log(`  Google Redirect: ${providers.google.redirectUri}`);
-    }
-    if (hasGitHubOAuth) {
-      console.log(`  GitHub Client ID: ${providers.github.clientId.substring(0, 10)}...`);
-      console.log(`  GitHub Redirect: ${providers.github.redirectUri}`);
-    }
-  }, [hasGoogleOAuth, hasGitHubOAuth]);
 
   // Auth.js-style OAuth handlers
   const handleGoogleLogin = async () => {
