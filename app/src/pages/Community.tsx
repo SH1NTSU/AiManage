@@ -171,17 +171,6 @@ const Community = () => {
             ))}
           </select>
 
-          {/* Price Filter */}
-          <select
-            className="px-4 py-2 rounded-md border border-border bg-background text-foreground"
-            value={priceFilter}
-            onChange={(e) => setPriceFilter(e.target.value)}
-          >
-            <option value="all">All Prices</option>
-            <option value="free">Free Only</option>
-            <option value="paid">Paid Only</option>
-          </select>
-
           {/* Sort By */}
           <select
             className="px-4 py-2 rounded-md border border-border bg-background text-foreground"
@@ -192,8 +181,6 @@ const Community = () => {
             <option value="recent">Recently Added</option>
             <option value="rating">Highest Rated</option>
             <option value="downloads">Most Downloads</option>
-            <option value="price-low">Price: Low to High</option>
-            <option value="price-high">Price: High to Low</option>
           </select>
         </div>
       </div>

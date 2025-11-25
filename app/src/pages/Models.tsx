@@ -167,11 +167,11 @@ const Models = () => {
         return;
       }
 
-      // Prepare payload
+      // Prepare payload (always free)
       const payload: any = {
         model_id: modelToPublish.id,
         description: publishForm.description,
-        price: publishForm.price,
+        price: 0, // Always free
         license_type: publishForm.license_type,
       };
 
@@ -719,7 +719,7 @@ const Models = () => {
           <DialogHeader>
             <DialogTitle className="text-2xl">Publish to Community</DialogTitle>
             <DialogDescription>
-              Share your trained model "{modelToPublish?.name}" with the community
+              Share your trained model "{modelToPublish?.name}" with the community for free
             </DialogDescription>
           </DialogHeader>
 
@@ -735,26 +735,6 @@ const Models = () => {
                 onChange={(e) => setPublishForm({ ...publishForm, description: e.target.value })}
                 required
               />
-            </div>
-
-            {/* Price */}
-            <div className="space-y-2">
-              <Label htmlFor="price">Price * (USD)</Label>
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">$</span>
-                <Input
-                  id="price"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={publishForm.price / 100}
-                  onChange={(e) => setPublishForm({ ...publishForm, price: Math.round(parseFloat(e.target.value || "0") * 100) })}
-                />
-                <span className="text-xs text-muted-foreground whitespace-nowrap">
-                  (0 = Free)
-                </span>
-              </div>
             </div>
 
             {/* License Type */}
