@@ -20,19 +20,20 @@ func NewRouter() http.Handler {
 	fileServer := http.FileServer(http.Dir("./uploads"))
 	r.Handle("/uploads/*", http.StripPrefix("/uploads/", fileServer))
 
-	// Initialize AI Agent Handler
+	// Initialize AI Agent Handler (optional)
 	aiAgentHandler, err := handlers.NewAIAgentHandler()
 	if err != nil {
 		// Log error but continue - AI agent is optional
 		// You might want to add proper logging here
 	}
 
-	// Initialize Training Handler (if AI Agent is available)
-	var trainingHandler *handlers.TrainingHandler
+	// Initialize Training Handler (always available, even without AI Agent)
+	trainingHandler := handlers.NewTrainingHandler(nil)
+
+	// Initialize Delete Model Handler (if AI Agent is available)
 	var deleteModelHandler *handlers.DeleteModelHandler
 	if aiAgentHandler != nil {
 		agent := aiAgentHandler.GetAgent()
-		trainingHandler = handlers.NewTrainingHandler(agent)
 		deleteModelHandler = handlers.NewDeleteModelHandler(agent)
 
 		// Set global trainer for remote training support
@@ -108,13 +109,11 @@ func NewRouter() http.Handler {
 				protected.Post("/ai/prompt", aiAgentHandler.CustomPrompt)
 			}
 
-			// Training routes
-			if trainingHandler != nil {
-				protected.Post("/train/start", trainingHandler.StartTraining)
-				protected.Get("/train/progress", trainingHandler.GetTrainingProgress)
-				protected.Post("/train/analyze", trainingHandler.AnalyzeResults)
-				protected.Post("/train/cleanup", trainingHandler.CleanupOldTrainings)
-			}
+			// Training routes (always available)
+			protected.Post("/train/start", trainingHandler.StartTraining)
+			protected.Get("/train/progress", trainingHandler.GetTrainingProgress)
+			protected.Post("/train/analyze", trainingHandler.AnalyzeResults)
+			protected.Post("/train/cleanup", trainingHandler.CleanupOldTrainings)
 
 			// Subscription routes
 			protected.Get("/subscription", handlers.GetSubscriptionHandler)
