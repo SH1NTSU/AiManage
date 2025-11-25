@@ -15,6 +15,7 @@ import Pricing from "./pages/Pricing";
 // import HuggingFace from "./pages/HuggingFace";
 import Auth from "./pages/Auth";
 import AuthCallback from "./pages/AuthCallback";
+import VerifyEmail from "./pages/VerifyEmail";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./context/authContext";
 import { ModelProvider } from "./context/modelContext";
@@ -44,6 +45,7 @@ const App = () => (
 		  {/* Public */}
 		  <Route path="/auth" element={<Auth />} />
 		  <Route path="/auth/callback/:provider" element={<AuthCallback />} />
+		  <Route path="/verify-email" element={<VerifyEmail />} />
 
 		  {/* Protected */}
 		  <Route

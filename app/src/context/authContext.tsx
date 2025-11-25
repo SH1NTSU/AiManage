@@ -9,7 +9,7 @@ interface TokenPayload { exp: number; }
 interface AuthContextType {
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, username: string) => Promise<void>;
+  register: (email: string, password: string, username: string) => Promise<{ message: string }>;
   loginWithGoogle: (code: string) => Promise<void>;
   loginWithGitHub: (code: string) => Promise<void>;
   loginWithApple: (code: string, idToken?: string) => Promise<void>;
@@ -85,7 +85,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const register = async (email: string, password: string, username: string) => {
     setLoading(true); setError(null);
     try {
-      await axios.post(`${API_URL}/v1/register`, { email, password, username });
+      const res = await axios.post(`${API_URL}/v1/register`, { email, password, username });
+      return res.data;
     }
     catch (err: any) {
       const errorMessage = err.response?.data || "Register failed";

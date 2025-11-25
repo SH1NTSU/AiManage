@@ -5,17 +5,20 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { AuthContext } from "@/context/authContext";
 import { useToast } from "@/hooks/use-toast";
 import { validatePassword } from "@/lib/validation";
 import { signIn as authSignIn, providers } from "@/lib/auth";
-import { Check, X } from "lucide-react";
+import { Check, X, Mail } from "lucide-react";
 
 const Auth = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [username, setUsername] = useState("");
   const [showPasswordReqs, setShowPasswordReqs] = useState(false);
+  const [showVerificationMessage, setShowVerificationMessage] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
   const { login, register, loginWithGoogle } = useContext(AuthContext);
   const { toast } = useToast();
 
@@ -84,14 +87,19 @@ const Auth = () => {
     }
 
     try {
-      await register(email, password, username);
+      const response = await register(email, password, username);
+
+      // Show verification message
+      setVerificationEmail(email);
+      setShowVerificationMessage(true);
+
       toast({
         title: "Account Created!",
-        description: "Your account has been successfully created. You can now log in.",
+        description: response.message || "Please check your email to verify your account.",
         variant: "default",
       });
+
       // Clear form
-      setEmail("");
       setPassword("");
       setUsername("");
       setShowPasswordReqs(false);
@@ -207,6 +215,16 @@ const Auth = () => {
             </TabsContent>
 
             <TabsContent value="signup">
+              {showVerificationMessage && (
+                <Alert className="mb-4 border-green-500 bg-green-50 dark:bg-green-950">
+                  <Mail className="h-4 w-4 text-green-600" />
+                  <AlertTitle className="text-green-800 dark:text-green-200">Check your email</AlertTitle>
+                  <AlertDescription className="text-green-700 dark:text-green-300">
+                    We've sent a verification link to <strong>{verificationEmail}</strong>.
+                    Please check your inbox and click the link to activate your account.
+                  </AlertDescription>
+                </Alert>
+              )}
               <form onSubmit={handleSignup} className="space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="signup-username">Username</Label>
