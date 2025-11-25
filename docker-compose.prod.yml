@@ -20,9 +20,7 @@ services:
     restart: always
 
   server:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
+    image: ghcr.io/sh1ntsu/aimanage/server:latest
     container_name: aimanage-server
     environment:
       # Database
@@ -78,15 +76,7 @@ services:
     restart: always
 
   app:
-    build:
-      context: ./app
-      dockerfile: Dockerfile
-      args:
-        VITE_API_URL: https://www.aimanage.online/api
-        VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
-        VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
-        VITE_GITHUB_CLIENT_ID: ${VITE_GITHUB_CLIENT_ID:-}
-        VITE_GITHUB_REDIRECT_URI: ${VITE_GITHUB_REDIRECT_URI:-}
+    image: ghcr.io/sh1ntsu/aimanage/app:latest
     container_name: aimanage-app
     ports:
       - "127.0.0.1:3000:80"
