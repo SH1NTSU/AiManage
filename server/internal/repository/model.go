@@ -707,24 +707,74 @@ func GetPublishedModelByID(ctx context.Context, modelID int) (map[string]interfa
 	return row, nil
 }
 
-// IncrementModelViews increments the view count for a published model
-func IncrementModelViews(ctx context.Context, modelID int) error {
+// IncrementModelViews increments the view count for a published model (one view per user)
+// userID can be nil for anonymous users, ipAddress is used as fallback
+func IncrementModelViews(ctx context.Context, modelID int, userID *int, ipAddress string) error {
 	if models.Pool == nil {
 		return fmt.Errorf("database connection not initialized")
 	}
 
-	query := `
+	// Start a transaction to ensure atomicity
+	tx, err := models.Pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Try to insert a new view record
+	// If it already exists (user already viewed), it will fail silently
+	var insertQuery string
+	var args []interface{}
+
+	if userID != nil {
+		// Authenticated user - track by user_id
+		insertQuery = `
+			INSERT INTO model_views (model_id, user_id, ip_address)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (model_id, user_id) DO NOTHING
+		`
+		args = []interface{}{modelID, *userID, ipAddress}
+	} else {
+		// Anonymous user - track by IP address
+		insertQuery = `
+			INSERT INTO model_views (model_id, user_id, ip_address)
+			VALUES ($1, NULL, $2)
+			ON CONFLICT (model_id, ip_address) WHERE user_id IS NULL DO NOTHING
+		`
+		args = []interface{}{modelID, ipAddress}
+	}
+
+	result, err := tx.Exec(ctx, insertQuery, args...)
+	if err != nil {
+		return fmt.Errorf("failed to record view: %w", err)
+	}
+
+	// Check if a new row was inserted
+	rowsAffected := result.RowsAffected()
+	if rowsAffected == 0 {
+		// User already viewed this model, don't increment counter
+		log.Printf("User already viewed model ID: %d (skipping increment)", modelID)
+		return nil
+	}
+
+	// New view - increment the counter
+	updateQuery := `
 		UPDATE published_models
 		SET views_count = views_count + 1
 		WHERE id = $1
 	`
 
-	_, err := models.Pool.Exec(ctx, query, modelID)
+	_, err = tx.Exec(ctx, updateQuery, modelID)
 	if err != nil {
 		return fmt.Errorf("failed to increment views: %w", err)
 	}
 
-	log.Printf("Incremented views for published model ID: %d", modelID)
+	// Commit the transaction
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	log.Printf("Incremented views for published model ID: %d (new view)", modelID)
 	return nil
 }
 

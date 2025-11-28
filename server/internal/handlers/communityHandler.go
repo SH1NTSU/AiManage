@@ -49,8 +49,23 @@ func GetPublishedModelByIDHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Increment view count
-	if err := repository.IncrementModelViews(r.Context(), modelID); err != nil {
+	// Increment view count (one view per user)
+	// Get user ID from context (optional - can be anonymous)
+	var userID *int
+	if uid, ok := r.Context().Value(middlewares.UserIDKey).(int); ok {
+		userID = &uid
+	}
+
+	// Get IP address from request
+	ipAddress := r.RemoteAddr
+	// Check for forwarded IP (if behind proxy)
+	if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
+		ipAddress = forwardedFor
+	} else if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
+		ipAddress = realIP
+	}
+
+	if err := repository.IncrementModelViews(r.Context(), modelID, userID, ipAddress); err != nil {
 		// Log error but don't fail the request
 		log.Printf("[COMMUNITY WARNING] Failed to increment views for model %d: %v", modelID, err)
 	}
