@@ -4,12 +4,14 @@ CREATE TABLE model_views (
     model_id INTEGER NOT NULL REFERENCES published_models(id) ON DELETE CASCADE,
     user_id INTEGER REFERENCES users(id) ON DELETE CASCADE, -- NULL for anonymous users
     ip_address VARCHAR(45), -- For tracking anonymous users
-    viewed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    -- Prevent duplicate views from the same user
-    CONSTRAINT unique_user_view UNIQUE(model_id, user_id),
-    CONSTRAINT unique_anonymous_view UNIQUE(model_id, ip_address) WHERE user_id IS NULL
+    viewed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Create unique constraint for authenticated users
+CREATE UNIQUE INDEX unique_user_view ON model_views(model_id, user_id) WHERE user_id IS NOT NULL;
+
+-- Create unique constraint for anonymous users
+CREATE UNIQUE INDEX unique_anonymous_view ON model_views(model_id, ip_address) WHERE user_id IS NULL;
 
 -- Create indexes for better query performance
 CREATE INDEX idx_model_views_model_id ON model_views(model_id);
