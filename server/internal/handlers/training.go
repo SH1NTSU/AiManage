@@ -360,7 +360,11 @@ func (h *TrainingHandler) AnalyzeResults(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Get training progress
-	trainer := h.agent.GetTrainer()
+	trainer := GetGlobalTrainer()
+	if trainer == nil {
+		http.Error(w, "Training system not initialized", http.StatusInternalServerError)
+		return
+	}
 	progress, err := trainer.GetProgress(requestBody.TrainingID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
